@@ -1,0 +1,69 @@
+# ─── WMS Panamá — .gitignore raíz (monorepo) ──────────────────────────────────
+
+# ===== Entorno / secretos =====
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+
+# ===== Sistema operativo =====
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Archivos temporales de Office (locks ~$...)
+~$*
+*.tmp
+
+# ===== Python (backend) =====
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+.eggs/
+build/
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+pytest-cache-files-*/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# ===== Node / Frontend =====
+node_modules/
+dist/
+.vite/
+*.local
+vite.config.ts.timestamp-*.mjs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ===== Logs =====
+*.log
+logs/
+
+# ===== Docker overrides =====
+*.override.yml
+docker-compose.override.yml
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.swp
+*.swo

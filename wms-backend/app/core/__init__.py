@@ -1,0 +1,1 @@
+"""WMS Panama — Core package."""

@@ -1,0 +1,168 @@
+version: "3.9"
+
+# ─── WMS Panama — Docker Compose (Desarrollo) ─────────────────────────────────
+# Stack: FastAPI + PostgreSQL 16 + Redis 7 + Meilisearch + MailHog
+# Uso: docker compose up -d
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── PostgreSQL 16 ─────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: wms_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wms_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wms_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-wms_db}
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-wms_user} -d ${POSTGRES_DB:-wms_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wms_network
+
+  # ── Redis 7 ───────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: wms_redis
+    restart: unless-stopped
+    command: redis-server --requirepass ${REDIS_PASSWORD:-redis_secret} --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-redis_secret}", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - wms_network
+
+  # ── Meilisearch ───────────────────────────────────────────────────────────
+  meilisearch:
+    image: getmeili/meilisearch:v1.6
+    container_name: wms_meilisearch
+    restart: unless-stopped
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-meili_master_dev}
+      MEILI_ENV: development
+      MEILI_NO_ANALYTICS: "true"
+    ports:
+      - "7700:7700"
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - wms_network
+
+  # ── MailHog (SMTP local para desarrollo) ──────────────────────────────────
+  mailhog:
+    image: mailhog/mailhog:latest
+    container_name: wms_mailhog
+    restart: unless-stopped
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+    networks:
+      - wms_network
+
+  # ── WMS API (FastAPI) ──────────────────────────────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: wms_api
+    restart: unless-stopped
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wms_user}:${POSTGRES_PASSWORD:-wms_secret}@postgres:5432/${POSTGRES_DB:-wms_db}
+      - DATABASE_SYNC_URL=postgresql+psycopg2://${POSTGRES_USER:-wms_user}:${POSTGRES_PASSWORD:-wms_secret}@postgres:5432/${POSTGRES_DB:-wms_db}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/0
+      - MEILI_URL=http://meilisearch:7700
+      - MEILI_MASTER_KEY=${MEILI_MASTER_KEY:-meili_master_dev}
+      - SECRET_KEY=${SECRET_KEY:-change_me_in_production_use_32_chars_min}
+      - ENVIRONMENT=development
+      - DEBUG=true
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - /app/__pycache__
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+    networks:
+      - wms_network
+
+  # ── Celery Worker ─────────────────────────────────────────────────────────
+  celery_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: wms_celery_worker
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4 -Q default,high_priority,low_priority
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wms_user}:${POSTGRES_PASSWORD:-wms_secret}@postgres:5432/${POSTGRES_DB:-wms_db}
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-change_me_in_production_use_32_chars_min}
+      - ENVIRONMENT=development
+    volumes:
+      - .:/app
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - wms_network
+
+  # ── Celery Beat (Scheduler) ───────────────────────────────────────────────
+  celery_beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: development
+    container_name: wms_celery_beat
+    restart: unless-stopped
+    command: celery -A app.tasks.celery_app beat --loglevel=info --scheduler celery.beat:PersistentScheduler
+    environment:
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/0
+      - ENVIRONMENT=development
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    networks:
+      - wms_network
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  meilisearch_data:
+    driver: local
+
+networks:
+  wms_network:
+    driver: bridge
+    name: wms_network
