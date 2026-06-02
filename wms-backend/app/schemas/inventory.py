@@ -293,19 +293,20 @@ class InventoryAdjustmentResponse(WMSSchema):
     warehouse_id: uuid.UUID
     adjustment_number: str
     reason: str
-    reason_code: str
+    reason_code: Optional[str] = None
     status: str    # draft | pending_approval | approved | rejected | applied
-    notes: Optional[str]
-    reference_number: Optional[str]
+    notes: Optional[str] = None
+    reference_number: Optional[str] = None
     lines: List[AdjustmentLineResponse] = []
-    total_lines: int
-    total_variance_value: Optional[Decimal]
-    created_by: uuid.UUID
-    approved_by: Optional[uuid.UUID]
-    applied_by: Optional[uuid.UUID]
+    total_lines: int = 0
+    total_variance_value: Optional[Decimal] = None
+    created_by_id: Optional[uuid.UUID] = None
+    approved_by: Optional[uuid.UUID] = None
+    applied_by: Optional[uuid.UUID] = None
     created_at: datetime
-    approved_at: Optional[datetime]
-    applied_at: Optional[datetime]
+    updated_at: datetime
+    approved_at: Optional[datetime] = None
+    applied_at: Optional[datetime] = None
 
 
 class AdjustmentApproveRequest(WMSSchema):

@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.db.redis import distributed_lock
 from app.models.inventory import (
-    InventoryStatus, MovementType, ReservationType,
+    InventoryStatus, MovementType, ReservationType, AdjustmentStatus,
     InventoryAdjustment, AdjustmentLine, CycleCount, CycleCountLine,
 )
 from app.models.master_data import Product, Location
@@ -353,10 +353,11 @@ class InventoryService:
         adj = await self.adjustments.create(
             tenant_id=self.tenant_id,
             warehouse_id=body.warehouse_id,
-            created_by_id=self.user_id,
+            created_by=self.user_id,
             reason=body.reason,
             reason_code=body.reason_code,
             notes=body.notes,
+            reference_number=body.reference_number,
         )
 
         for line_data in body.lines:
@@ -378,7 +379,7 @@ class InventoryService:
             )
 
         # Pasar a pending_approval automáticamente
-        adj.status = "pending_approval"
+        adj.status = AdjustmentStatus.PENDING_APPROVAL
 
         logger.info(
             "Adjustment created",
@@ -400,19 +401,19 @@ class InventoryService:
         adj = await self.adjustments.get_by_id(adjustment_id, self.tenant_id)
         if not adj:
             raise InventoryServiceError("Ajuste no encontrado.", "NOT_FOUND")
-        if adj.status != "pending_approval":
+        if adj.status != AdjustmentStatus.PENDING_APPROVAL:
             raise InventoryServiceError(
                 f"El ajuste está en estado '{adj.status}'. Solo se puede aprobar/rechazar en 'pending_approval'.",
                 "INVALID_STATE",
             )
 
         if body.approved:
-            adj.status = "approved"
+            adj.status = AdjustmentStatus.APPROVED
             adj.approved_by = self.user_id
             adj.approved_at = datetime.now(timezone.utc)
         else:
-            adj.status = "rejected"
-            adj.approved_by = self.user_id
+            adj.status = AdjustmentStatus.REJECTED
+            adj.rejected_by = self.user_id
             adj.approved_at = datetime.now(timezone.utc)
 
         if body.notes:
@@ -428,7 +429,7 @@ class InventoryService:
         adj = await self.adjustments.get_by_id(adjustment_id, self.tenant_id)
         if not adj:
             raise InventoryServiceError("Ajuste no encontrado.", "NOT_FOUND")
-        if adj.status != "approved":
+        if adj.status != AdjustmentStatus.APPROVED:
             raise InventoryServiceError(
                 f"El ajuste debe estar 'approved' para aplicarse. Estado actual: {adj.status}",
                 "INVALID_STATE",
@@ -485,7 +486,7 @@ class InventoryService:
                 notes=f"Ajuste {adj.adjustment_number}: {adj.reason}",
             )
 
-        adj.status = "applied"
+        adj.status = AdjustmentStatus.APPLIED
         adj.applied_by = self.user_id
         adj.applied_at = datetime.now(timezone.utc)
 

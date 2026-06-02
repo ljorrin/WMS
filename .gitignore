@@ -26,6 +26,11 @@ desktop.ini
 ~$*
 *.tmp
 
+# Bases de datos locales / temporales (ej: SQLite usado para autogenerate)
+*.db
+*.sqlite
+*.sqlite3
+
 # ===== Python (backend) =====
 __pycache__/
 *.py[cod]
