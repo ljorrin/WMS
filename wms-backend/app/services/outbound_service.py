@@ -47,6 +47,7 @@ from app.repositories.outbound import (
     SalesOrderRepository,
     ShipmentRepository,
 )
+from app.schemas.inventory import InventoryReservationCreate
 from app.services.inventory_service import InventoryService
 
 log = structlog.get_logger(__name__)
@@ -112,11 +113,15 @@ class OutboundService:
         for line in so.lines:
             try:
                 await self.inv_service.create_reservation(
-                    warehouse_id=so.warehouse_id,
-                    product_id=line.product_id,
-                    uom_id=line.uom_id,
-                    quantity=line.quantity_ordered,
-                    reference=f"SO-{so_id}",
+                    InventoryReservationCreate(
+                        warehouse_id=so.warehouse_id,
+                        product_id=line.product_id,
+                        quantity=line.quantity_ordered,
+                        reservation_type="soft",
+                        reference_type="SO",
+                        reference_id=so_id,
+                        reference_number=so.so_number,
+                    )
                 )
                 await self.so_repo.update_line_quantities(
                     line.id, "quantity_allocated", line.quantity_ordered
@@ -250,23 +255,25 @@ class OutboundService:
                 qty = line.quantity_allocated or line.quantity_ordered
 
                 # FEFO: obtener batches/ubicaciones disponibles
-                batches = await self.inv_service.inv_repo.get_available_batches_fefo(
+                batches = await self.inv_service.levels.get_available_batches_fefo(
+                    tenant_id=self.tenant_id,
                     warehouse_id=so.warehouse_id,
                     product_id=line.product_id,
                     quantity_needed=qty,
                 )
 
                 for batch_alloc in batches:
-                    alloc_qty = min(batch_alloc["available"], qty)
+                    level = batch_alloc["level"]
+                    alloc_qty = min(batch_alloc["quantity_to_use"], qty)
                     tasks_data.append(dict(
                         wave_id=wave_id,
                         so_id=so.id,
                         so_line_id=line.id,
                         product_id=line.product_id,
                         uom_id=line.uom_id,
-                        batch_id=batch_alloc.get("batch_id"),
+                        batch_id=level.batch_id,
                         quantity_requested=alloc_qty,
-                        from_location_id=batch_alloc["location_id"],
+                        from_location_id=level.location_id,
                         priority=so.priority,
                     ))
                     qty -= alloc_qty
@@ -330,15 +337,17 @@ class OutboundService:
                 "short_reason es obligatorio cuando hay short pick."
             )
 
-        # Descontar inventario
+        # Descontar inventario (pin a la ubicación de la tarea de picking)
         if quantity_picked > 0:
+            so = await self.so_repo.get_by_id(task.so_id)
             await self.inv_service.pick_stock(
-                location_id=task.from_location_id,
+                warehouse_id=so.warehouse_id,
                 product_id=task.product_id,
-                uom_id=task.uom_id,
                 quantity=quantity_picked,
-                batch_id=task.batch_id,
-                reference=f"PICK-{task_id}",
+                reference_type="SO",
+                reference_id=task.so_id,
+                reference_number=f"PICK-{task_id}",
+                force_location_id=task.from_location_id,
             )
 
         # Completar tarea en BD
