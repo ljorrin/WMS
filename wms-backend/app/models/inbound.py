@@ -38,15 +38,16 @@ from app.models.base import WMSTenantBase
 class POStatus(str, PyEnum):
     DRAFT      = "draft"
     CONFIRMED  = "confirmed"
-    SENT       = "sent"          # Enviada al proveedor
-    PARTIAL    = "partial"       # Recibida parcialmente
-    RECEIVED   = "received"      # Recibida completamente
-    CLOSED     = "closed"        # Cerrada (puede quedar pendiente)
+    SENT       = "sent"                  # Enviada al proveedor
+    PARTIALLY_RECEIVED = "partially_received"  # Recibida parcialmente
+    RECEIVED   = "received"              # Recibida completamente
+    CLOSED     = "closed"               # Cerrada (puede quedar pendiente)
     CANCELLED  = "cancelled"
 
 
 class ASNStatus(str, PyEnum):
-    EXPECTED   = "expected"      # ASN recibido, mercancia en camino
+    CREATED    = "created"       # ASN creado en el WMS
+    IN_TRANSIT = "in_transit"    # Proveedor despacho la mercancia
     ARRIVED    = "arrived"       # Camion llego al patio
     RECEIVING  = "receiving"     # En proceso de descarga/recepcion
     RECEIVED   = "received"      # Recepcion completada
@@ -55,22 +56,22 @@ class ASNStatus(str, PyEnum):
 
 
 class GRNStatus(str, PyEnum):
-    DRAFT      = "draft"
-    PENDING_QC = "pending_qc"    # Esperando inspeccion de calidad
-    QC_PASSED  = "qc_passed"     # Calidad aprobada
-    QC_FAILED  = "qc_failed"     # Calidad rechazada (va a cuarentena/RTV)
-    PUTAWAY    = "putaway"       # En proceso de putaway
-    COMPLETED  = "completed"     # GRN completo, inventario actualizado
-    CANCELLED  = "cancelled"
+    DRAFT                 = "draft"
+    IN_PROGRESS           = "in_progress"          # Recepcion en curso
+    CONFIRMED             = "confirmed"            # Recibido, pendiente QC/putaway
+    PUTAWAY_IN_PROGRESS   = "putaway_in_progress"  # Generadas tareas de putaway
+    COMPLETED             = "completed"            # GRN completo, inventario actualizado
+    REJECTED              = "rejected"             # Rechazado por calidad
+    CANCELLED             = "cancelled"
 
 
 class QCStatus(str, PyEnum):
     PENDING    = "pending"
     IN_PROGRESS = "in_progress"
-    PASSED     = "passed"
-    FAILED     = "failed"
+    APPROVED   = "approved"
+    REJECTED   = "rejected"
     PARTIAL    = "partial"       # Parte aprobada, parte rechazada
-    CONDITIONALLY_RELEASED = "conditionally_released"
+    CANCELLED  = "cancelled"
 
 
 class PutawayStatus(str, PyEnum):
@@ -82,13 +83,12 @@ class PutawayStatus(str, PyEnum):
 
 
 class RTVStatus(str, PyEnum):
-    DRAFT      = "draft"
-    APPROVED   = "approved"
-    PICKING    = "picking"
-    READY      = "ready"         # Listo para recoger por proveedor
-    SHIPPED    = "shipped"
-    CONFIRMED  = "confirmed"     # Proveedor confirmo recepcion
-    CLOSED     = "closed"
+    PENDING         = "pending"          # Devolucion creada, pendiente de aprobacion
+    APPROVED        = "approved"
+    SHIPPED         = "shipped"
+    CREDIT_RECEIVED = "credit_received"  # Proveedor emitio nota de credito
+    CLOSED          = "closed"
+    CANCELLED       = "cancelled"
 
 
 class ReceivingMode(str, PyEnum):
@@ -336,7 +336,7 @@ class ASN(WMSTenantBase):
         String(100), comment="Numero de referencia del proveedor"
     )
     status: Mapped[ASNStatus] = mapped_column(
-        Enum(ASNStatus), default=ASNStatus.EXPECTED
+        Enum(ASNStatus), default=ASNStatus.CREATED
     )
 
     # Logistica del envio
@@ -478,10 +478,11 @@ class GoodsReceipt(WMSTenantBase):
         ForeignKey("purchase_orders.id", ondelete="RESTRICT"),
         nullable=True
     )
-    supplier_id: Mapped[uuid.UUID] = mapped_column(
+    supplier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("suppliers.id", ondelete="RESTRICT"),
-        nullable=False
+        nullable=True,
+        comment="Puede ser NULL en recepciones ciegas; se deriva de la OC/ASN"
     )
 
     grn_number: Mapped[str] = mapped_column(String(50), nullable=False)
@@ -492,6 +493,9 @@ class GoodsReceipt(WMSTenantBase):
         Enum(ReceivingMode), default=ReceivingMode.STANDARD
     )
 
+    # Requiere inspeccion de calidad (cadena de frio rota u otra condicion)
+    requires_qc: Mapped[bool] = mapped_column(Boolean, default=False)
+
     # Operario receptor
     received_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -499,12 +503,17 @@ class GoodsReceipt(WMSTenantBase):
     )
 
     # Fechas
-    received_date: Mapped[date] = mapped_column(Date, nullable=False)
+    received_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False,
+        comment="Fecha/hora de recepcion de la mercancia (UTC)"
+    )
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # Dock y vehiculo
     dock_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
+    dock_number: Mapped[Optional[str]] = mapped_column(String(20))
     plate_number: Mapped[Optional[str]] = mapped_column(String(20))
     seal_number: Mapped[Optional[str]] = mapped_column(String(30))
     container_number: Mapped[Optional[str]] = mapped_column(String(20))
@@ -536,6 +545,7 @@ class GoodsReceipt(WMSTenantBase):
 
     # Sincronizacion ERP
     erp_synced: Mapped[bool] = mapped_column(Boolean, default=False)
+    erp_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     erp_document_id: Mapped[Optional[str]] = mapped_column(String(100))
 
     # Relaciones
@@ -554,7 +564,7 @@ class GoodsReceipt(WMSTenantBase):
         UniqueConstraint("warehouse_id", "grn_number",
                          name="uq_grn_warehouse_number"),
         Index("ix_grn_warehouse_status", "warehouse_id", "status"),
-        Index("ix_grn_tenant_date", "tenant_id", "received_date"),
+        Index("ix_grn_tenant_date", "tenant_id", "received_at"),
         Index("ix_grn_supplier", "supplier_id"),
     )
 
@@ -566,7 +576,7 @@ class GoodsReceiptLine(WMSTenantBase):
     """Linea de GRN — item recibido con cantidades reales."""
     __tablename__ = "goods_receipt_lines"
 
-    goods_receipt_id: Mapped[uuid.UUID] = mapped_column(
+    grn_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("goods_receipts.id", ondelete="CASCADE"),
         nullable=False
@@ -604,6 +614,15 @@ class GoodsReceiptLine(WMSTenantBase):
     quantity_rejected: Mapped[Decimal] = mapped_column(Numeric(15, 4), default=0)
     uom: Mapped[str] = mapped_column(String(20), default="UN")
 
+    # Datos del lote recibido (capturados en la recepcion)
+    batch_number: Mapped[Optional[str]] = mapped_column(String(100))
+    expiry_date: Mapped[Optional[date]] = mapped_column(Date)
+    manufacture_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    # Costo de recepcion
+    unit_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 4))
+    currency: Mapped[Optional[str]] = mapped_column(String(3), default="USD")
+
     # GS1
     sscc: Mapped[Optional[str]] = mapped_column(
         String(18), comment="SSCC del palet recibido"
@@ -616,8 +635,8 @@ class GoodsReceiptLine(WMSTenantBase):
     item_temp_celsius: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
     temp_ok: Mapped[Optional[bool]] = mapped_column(Boolean)
 
-    # Ubicacion donde se coloco temporalmente
-    receiving_location_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    # Ubicacion temporal de recepcion (staging area)
+    location_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("locations.id", ondelete="SET NULL")
     )
@@ -632,9 +651,9 @@ class GoodsReceiptLine(WMSTenantBase):
     goods_receipt: Mapped["GoodsReceipt"] = relationship(back_populates="lines")
 
     __table_args__ = (
-        UniqueConstraint("goods_receipt_id", "line_number",
+        UniqueConstraint("grn_id", "line_number",
                          name="uq_grn_lines_number"),
-        Index("ix_grn_lines_grn", "goods_receipt_id"),
+        Index("ix_grn_lines_grn", "grn_id"),
         Index("ix_grn_lines_product", "product_id"),
         Index("ix_grn_lines_batch", "batch_id"),
     )
@@ -649,19 +668,20 @@ class QualityInspection(WMSTenantBase):
     """
     __tablename__ = "quality_inspections"
 
-    goods_receipt_id: Mapped[uuid.UUID] = mapped_column(
+    grn_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("goods_receipts.id", ondelete="RESTRICT"),
         nullable=False
     )
-    warehouse_id: Mapped[uuid.UUID] = mapped_column(
+    warehouse_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
-        nullable=False
+        nullable=True,
+        comment="Se deriva del GRN; nullable para creacion via servicio"
     )
 
-    inspection_number: Mapped[str] = mapped_column(String(50), nullable=False)
-    inspection_type: Mapped[str] = mapped_column(
+    qi_number: Mapped[str] = mapped_column(String(50), nullable=False)
+    inspection_type: Mapped[Optional[str]] = mapped_column(
         String(30), default="sampling",
         comment="full_100 | sampling_aql | random | visual_only"
     )
@@ -682,19 +702,28 @@ class QualityInspection(WMSTenantBase):
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL")
     )
+    inspection_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
+    # Totales agregados de la inspeccion
+    total_inspected: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 4))
+    total_approved: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 4))
+    total_rejected: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 4))
+    defect_rate: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(6, 4), comment="rechazados / inspeccionados (0..1)"
+    )
+
     # Resultado
     defects_found: Mapped[int] = mapped_column(Integer, default=0)
-    defect_rate_pct: Mapped[Optional[float]] = mapped_column(Numeric(5, 2))
     overall_result: Mapped[Optional[str]] = mapped_column(
         String(20), comment="pass | fail | conditional"
     )
     disposition: Mapped[Optional[str]] = mapped_column(
         String(50),
-        comment="use_as_is | rework | return_to_vendor | scrap | quarantine"
+        comment="accept | reject | conditional_accept | rework"
     )
+    disposition_notes: Mapped[Optional[str]] = mapped_column(Text)
 
     # Evidencia
     photos: Mapped[Optional[list]] = mapped_column(
@@ -712,9 +741,9 @@ class QualityInspection(WMSTenantBase):
     )
 
     __table_args__ = (
-        UniqueConstraint("warehouse_id", "inspection_number",
+        UniqueConstraint("warehouse_id", "qi_number",
                          name="uq_qc_warehouse_number"),
-        Index("ix_qc_grn", "goods_receipt_id"),
+        Index("ix_qc_grn", "grn_id"),
         Index("ix_qc_warehouse_status", "warehouse_id", "status"),
     )
 
@@ -723,7 +752,7 @@ class QualityInspectionLine(WMSTenantBase):
     """Resultado de inspeccion por producto/defecto."""
     __tablename__ = "quality_inspection_lines"
 
-    inspection_id: Mapped[uuid.UUID] = mapped_column(
+    qi_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("quality_inspections.id", ondelete="CASCADE"),
         nullable=False
@@ -739,19 +768,30 @@ class QualityInspectionLine(WMSTenantBase):
         nullable=False
     )
 
+    line_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+
+    # Cantidades inspeccionadas
+    quantity_inspected: Mapped[Decimal] = mapped_column(Numeric(15, 4))
+    quantity_approved: Mapped[Decimal] = mapped_column(Numeric(15, 4), default=0)
+    quantity_rejected: Mapped[Decimal] = mapped_column(Numeric(15, 4), default=0)
+    quantity_defective: Mapped[Decimal] = mapped_column(Numeric(15, 4), default=0)
+
+    # Defectos
+    defect_codes: Mapped[Optional[list]] = mapped_column(
+        JSONB, comment="Lista de codigos de defecto detectados"
+    )
     defect_code: Mapped[Optional[str]] = mapped_column(String(30))
     defect_description: Mapped[Optional[str]] = mapped_column(Text)
     defect_category: Mapped[Optional[str]] = mapped_column(
         String(30), comment="critical | major | minor | cosmetic"
     )
-    quantity_inspected: Mapped[Decimal] = mapped_column(Numeric(15, 4))
-    quantity_defective: Mapped[Decimal] = mapped_column(Numeric(15, 4), default=0)
     result: Mapped[str] = mapped_column(String(10), default="pass")
+    notes: Mapped[Optional[str]] = mapped_column(Text)
 
     inspection: Mapped["QualityInspection"] = relationship(back_populates="lines")
 
     __table_args__ = (
-        Index("ix_qc_lines_inspection", "inspection_id"),
+        Index("ix_qc_lines_inspection", "qi_id"),
     )
 
 
@@ -770,7 +810,7 @@ class PutawayTask(WMSTenantBase):
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
         nullable=False, index=True
     )
-    goods_receipt_id: Mapped[uuid.UUID] = mapped_column(
+    grn_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("goods_receipts.id", ondelete="RESTRICT"),
         nullable=False
@@ -792,7 +832,7 @@ class PutawayTask(WMSTenantBase):
     )
 
     # Asignacion
-    assigned_to: Mapped[Optional[uuid.UUID]] = mapped_column(
+    assigned_to_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("users.id", ondelete="SET NULL")
     )
@@ -802,10 +842,10 @@ class PutawayTask(WMSTenantBase):
     )
 
     # Ubicaciones
-    from_location_id: Mapped[uuid.UUID] = mapped_column(
+    from_location_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("locations.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
         comment="Ubicacion de origen (zona de recepcion)"
     )
     suggested_location_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -845,8 +885,8 @@ class PutawayTask(WMSTenantBase):
 
     __table_args__ = (
         Index("ix_putaway_warehouse_status", "warehouse_id", "status"),
-        Index("ix_putaway_assigned", "assigned_to", "status"),
-        Index("ix_putaway_grn", "goods_receipt_id"),
+        Index("ix_putaway_assigned", "assigned_to_id", "status"),
+        Index("ix_putaway_grn", "grn_id"),
     )
 
 
@@ -870,7 +910,7 @@ class ReturnToVendor(WMSTenantBase):
         ForeignKey("suppliers.id", ondelete="RESTRICT"),
         nullable=False
     )
-    goods_receipt_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    grn_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("goods_receipts.id", ondelete="RESTRICT"),
         nullable=True
@@ -878,25 +918,32 @@ class ReturnToVendor(WMSTenantBase):
 
     rtv_number: Mapped[str] = mapped_column(String(50), nullable=False)
     status: Mapped[RTVStatus] = mapped_column(
-        Enum(RTVStatus), default=RTVStatus.DRAFT
+        Enum(RTVStatus), default=RTVStatus.PENDING
     )
     reason: Mapped[str] = mapped_column(
-        String(100), nullable=False,
+        String(500), nullable=False,
         comment="quality_defect | wrong_product | damaged | overage | expired | other"
     )
     reason_detail: Mapped[Optional[str]] = mapped_column(Text)
 
+    # Logistica de devolucion
     carrier_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("carriers.id", ondelete="SET NULL")
     )
+    return_carrier: Mapped[Optional[str]] = mapped_column(String(200))
+    return_tracking: Mapped[Optional[str]] = mapped_column(String(100))
     tracking_number: Mapped[Optional[str]] = mapped_column(String(100))
-    shipped_date: Mapped[Optional[date]] = mapped_column(Date)
+    shipped_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    confirmed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     total_units: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 4))
     total_value: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2))
     currency: Mapped[str] = mapped_column(String(3), default="USD")
 
+    # Financiero (nota de credito)
+    credit_expected: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), default=0)
+    credit_received: Mapped[Optional[Decimal]] = mapped_column(Numeric(18, 2), default=0)
     credit_memo_number: Mapped[Optional[str]] = mapped_column(
         String(50), comment="Numero de nota de credito del proveedor"
     )
