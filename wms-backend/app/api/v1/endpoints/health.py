@@ -119,3 +119,13 @@ async def readiness() -> dict:
             detail="Base de datos no disponible.",
         )
     return {"status": "ready", "timestamp": datetime.now(timezone.utc).isoformat()}
+
+
+# ── Métricas Prometheus (NFR observabilidad) ──────────────────────────────────
+@router.get("/metrics", summary="Métricas en formato Prometheus", include_in_schema=False)
+async def metrics():
+    """Expone métricas del proceso en formato de exposición Prometheus."""
+    from fastapi import Response
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

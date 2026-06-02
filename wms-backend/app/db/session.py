@@ -123,3 +123,12 @@ async def dispose_engine() -> None:
     """Cierra todas las conexiones del pool. Llamar al shutdown del app."""
     await engine.dispose()
     logger.info("Database engine disposed")
+
+
+# ── Auditoría automática (FR-004) ─────────────────────────────────────────────
+# Registra el listener before_flush (best-effort) para auditar toda operación.
+try:
+    from app.services.audit_listener import register as _register_audit
+    _register_audit()
+except Exception:  # nunca bloquear el arranque por la auditoría
+    logger.warning("No se pudo registrar el listener de auditoría", exc_info=True)

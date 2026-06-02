@@ -37,6 +37,7 @@ class LoginRequest(WMSBaseSchema):
     email: EmailStr = Field(..., description="Email del usuario")
     password: str = Field(..., min_length=1, description="Contraseña")
     remember_me: bool = Field(default=False, description="Extender duración del refresh token")
+    mfa_code: Optional[str] = Field(default=None, description="Código TOTP (obligatorio si el usuario tiene MFA activado)")
 
     @field_validator("email")
     @classmethod
