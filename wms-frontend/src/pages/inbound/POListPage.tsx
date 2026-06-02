@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, CheckCircle, XCircle } from 'lucide-react'
+import { Plus, CheckCircle, XCircle, Pencil, Trash2 } from 'lucide-react'
 import { inboundApi } from '@/api/endpoints'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -8,9 +8,16 @@ import { Button } from '@/components/ui/Button'
 import { Table, Thead, Tbody, Tr, Th, Td, EmptyRow } from '@/components/ui/Table'
 import { fmt } from '@/utils/format'
 import toast from 'react-hot-toast'
+import { POFormModal } from './POFormModal'
+import { PODetailModal } from './PODetailModal'
+import { POEditModal } from './POEditModal'
+import type { PurchaseOrder } from '@/types'
 
 export function POListPage() {
   const [page, setPage] = useState(1)
+  const [creating, setCreating] = useState(false)
+  const [detailId, setDetailId] = useState<string | null>(null)
+  const [editing, setEditing] = useState<PurchaseOrder | null>(null)
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
@@ -35,6 +42,15 @@ export function POListPage() {
     },
   })
 
+  const deleteMut = useMutation({
+    mutationFn: (id: string) => inboundApi.deletePO(id),
+    onSuccess: () => {
+      toast.success('OC eliminada')
+      qc.invalidateQueries({ queryKey: ['pos'] })
+    },
+    onError: () => toast.error('No se pudo eliminar la OC'),
+  })
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -42,7 +58,7 @@ export function POListPage() {
           <h1 className="text-xl font-bold text-gray-900">Órdenes de Compra</h1>
           <p className="text-sm text-gray-500">{data?.total ?? 0} órdenes</p>
         </div>
-        <Button size="sm">
+        <Button size="sm" onClick={() => setCreating(true)}>
           <Plus className="h-4 w-4" /> Nueva OC
         </Button>
       </div>
@@ -75,7 +91,10 @@ export function POListPage() {
               data?.items.map(po => (
                 <Tr key={po.id}>
                   <Td>
-                    <span className="font-mono font-medium text-primary-700">{po.po_number}</span>
+                    <button onClick={() => setDetailId(po.id)}
+                      className="font-mono font-medium text-primary-700 hover:text-primary-900 hover:underline">
+                      {po.po_number}
+                    </button>
                   </Td>
                   <Td><Badge status={po.status} /></Td>
                   <Td className="text-gray-600">{po.supplier_id}</Td>
@@ -93,6 +112,15 @@ export function POListPage() {
                     <div className="flex gap-1">
                       {po.status === 'draft' && (
                         <button
+                          onClick={() => setEditing(po)}
+                          title="Editar OC"
+                          className="text-gray-500 hover:text-primary-700 transition-colors"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      )}
+                      {po.status === 'draft' && (
+                        <button
                           onClick={() => confirmMut.mutate(po.id)}
                           title="Confirmar OC"
                           className="text-green-600 hover:text-green-800 transition-colors"
@@ -107,6 +135,18 @@ export function POListPage() {
                           className="text-red-500 hover:text-red-700 transition-colors"
                         >
                           <XCircle className="h-4 w-4" />
+                        </button>
+                      )}
+                      {['draft', 'cancelled'].includes(po.status) && (
+                        <button
+                          onClick={() => {
+                            if (confirm(`¿Eliminar la orden ${po.po_number}? Esta acción la oculta del listado.`))
+                              deleteMut.mutate(po.id)
+                          }}
+                          title="Eliminar OC (borrado lógico)"
+                          className="text-gray-400 hover:text-red-700 transition-colors"
+                        >
+                          <Trash2 className="h-4 w-4" />
                         </button>
                       )}
                     </div>
@@ -132,6 +172,10 @@ export function POListPage() {
           </div>
         )}
       </Card>
+
+      <POFormModal open={creating} onClose={() => setCreating(false)} />
+      <PODetailModal poId={detailId} onClose={() => setDetailId(null)} />
+      <POEditModal po={editing} onClose={() => setEditing(null)} />
     </div>
   )
 }

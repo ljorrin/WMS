@@ -124,9 +124,15 @@ export interface PurchaseOrder {
   status: POStatus
   order_date: string
   expected_delivery_date?: string
+  supplier_po_reference?: string
+  payment_terms?: string
+  incoterms?: string
+  notes?: string
+  erp_reference?: string
   total_amount: number
   currency: string
   lines: POLine[]
+  status_history?: POStatusHistory[]
   created_at: string
   updated_at: string
 }
@@ -139,6 +145,24 @@ export interface POLine {
   quantity_pending: number
   unit_cost: number
   status: string
+}
+
+export interface POStatusHistory {
+  id: string
+  from_status?: string | null
+  to_status: string
+  changed_by_id?: string | null
+  reason?: string | null
+  created_at: string
+}
+
+export interface PurchaseOrderUpdate {
+  supplier_po_reference?: string
+  expected_delivery_date?: string
+  payment_terms?: string
+  incoterms?: string
+  notes?: string
+  erp_reference?: string
 }
 
 export interface GoodsReceipt {
@@ -181,6 +205,33 @@ export interface PutawayTask {
   assigned_to_id?: string
   cycle_time_seconds?: number
   created_at: string
+}
+
+// ── Master Data ───────────────────────────────────────
+export interface Product {
+  id: string
+  sku: string
+  name: string
+  uom: string
+  status: string
+  gtin_13?: string | null
+}
+
+export interface Supplier {
+  id: string
+  code: string
+  name: string
+  status: string
+  supplier_type: string
+  lead_time_days?: number | null
+}
+
+export interface LocationLite {
+  id: string
+  code: string
+  warehouse_id: string
+  location_type: string
+  status: string
 }
 
 // ── Outbound ──────────────────────────────────────────

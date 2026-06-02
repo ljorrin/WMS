@@ -11,6 +11,7 @@ import type {
   Warehouse, MovementRow, BatchListResponse,
   QualityInspection, PackTask, ReturnOrder,
   ThroughputResponse, InboundThroughputPoint, OutboundThroughputPoint,
+  Product, Supplier, LocationLite,
 } from '@/types'
 
 interface ListResponse<T> { items: T[]; total: number; page: number; page_size: number }
@@ -45,6 +46,18 @@ export const warehouseApi = {
 
   get: (id: string) =>
     api.get<Warehouse>(`/warehouses/${id}`).then(r => r.data),
+}
+
+// ── MASTER DATA ───────────────────────────────────────
+export const masterApi = {
+  getProducts: (params?: Record<string, unknown>) =>
+    api.get<ListResponse<Product>>('/master/products', { params }).then(r => r.data),
+
+  getSuppliers: (params?: Record<string, unknown>) =>
+    api.get<ListResponse<Supplier>>('/master/suppliers', { params }).then(r => r.data),
+
+  getLocations: (params?: Record<string, unknown>) =>
+    api.get<ListResponse<LocationLite>>('/master/locations', { params }).then(r => r.data),
 }
 
 // ── INVENTORY ─────────────────────────────────────────
@@ -98,11 +111,17 @@ export const inboundApi = {
   createPO: (data: unknown) =>
     api.post<PurchaseOrder>('/inbound/purchase-orders', data).then(r => r.data),
 
+  updatePO: (id: string, data: unknown) =>
+    api.put<PurchaseOrder>(`/inbound/purchase-orders/${id}`, data).then(r => r.data),
+
   confirmPO: (id: string) =>
     api.post(`/inbound/purchase-orders/${id}/confirm`),
 
   cancelPO: (id: string) =>
     api.post(`/inbound/purchase-orders/${id}/cancel`),
+
+  deletePO: (id: string) =>
+    api.delete(`/inbound/purchase-orders/${id}`),
 
   // GRN
   getGRNs: (params?: Record<string, unknown>) =>
