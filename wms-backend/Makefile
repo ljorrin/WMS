@@ -4,7 +4,8 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 .PHONY: help up down build logs db-upgrade db-downgrade db-migrate db-reset \
-        seed test test-cov lint format typecheck clean shell
+        seed test test-cov test-unit test-integration test-integration-db \
+        lint format typecheck clean shell
 
 # Colores para la consola
 GREEN  := \033[0;32m
@@ -92,6 +93,9 @@ test-unit: ## 🧪 Solo tests unitarios
 
 test-integration: ## 🧪 Solo tests de integración
 	docker compose exec api pytest tests/integration/ -v
+
+test-integration-db: ## 🧪 Integración contra PostgreSQL real (crea wms_test y corre tests/integration_db)
+	./scripts/run-integration-tests.sh
 
 test-watch: ## 🧪 Tests en modo watch (requiere pytest-watch)
 	docker compose exec api ptw tests/ -- -v

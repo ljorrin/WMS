@@ -11,15 +11,21 @@ materializar ese esquema, así que estos tests **requieren** PostgreSQL.
 
 ## Cómo ejecutarlos
 
+### Opción A — un solo comando (recomendado, con docker compose)
 ```bash
-# 1) Levantar una BD de pruebas (ej. con el docker-compose del repo)
-docker compose up -d db
-#    o crear una BD limpia: createdb wms_test
+cd wms-backend
+make test-integration-db
+```
+Esto levanta el servicio `postgres`, crea la BD de pruebas `wms_test` (sin tocar
+`wms_db`) y ejecuta `pytest tests/integration_db` dentro del contenedor `api`.
+Implementado en `scripts/run-integration-tests.sh` (variables overrideables:
+`POSTGRES_USER`, `POSTGRES_PASSWORD`, `WMS_TEST_DB`).
 
-# 2) Apuntar los tests a esa BD (driver asyncpg)
+### Opción B — manual contra cualquier PostgreSQL
+```bash
+docker compose up -d postgres          # o usa tu propio PostgreSQL
+createdb wms_test                      # si no existe
 export WMS_TEST_DATABASE_URL="postgresql+asyncpg://wms_user:wms_secret@localhost:5432/wms_test"
-
-# 3) Ejecutar
 cd wms-backend
 pytest tests/integration_db -v
 ```
