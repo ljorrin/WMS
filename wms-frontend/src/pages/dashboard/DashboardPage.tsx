@@ -2,11 +2,12 @@ import { useQuery } from '@tanstack/react-query'
 import {
   TruckIcon, SendHorizonal, Boxes, AlertTriangle,
   PackageCheck, Clock, BarChart3, Ship,
+  Warehouse, CalendarClock, ClipboardList,
 } from 'lucide-react'
 import { KpiCard } from '@/components/ui/KpiCard'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
-import { inboundApi, outboundApi } from '@/api/endpoints'
+import { inboundApi, outboundApi, inventoryApi } from '@/api/endpoints'
 import { fmt } from '@/utils/format'
 import { format, parseISO } from 'date-fns'
 import { es } from 'date-fns/locale'
@@ -31,6 +32,12 @@ export function DashboardPage() {
   const { data: outbound, isLoading: outboundLoading } = useQuery({
     queryKey: ['outbound-dashboard'],
     queryFn: () => outboundApi.getDashboard(),
+    refetchInterval: 60_000,
+  })
+
+  const { data: inventory, isLoading: inventoryLoading } = useQuery({
+    queryKey: ['inventory-dashboard'],
+    queryFn: () => inventoryApi.getDashboard(),
     refetchInterval: 60_000,
   })
 
@@ -132,6 +139,48 @@ export function DashboardPage() {
             icon={AlertTriangle}
             alert={(outbound?.orders_overdue ?? 0) > 0}
             loading={outboundLoading}
+          />
+        </div>
+      </section>
+
+      {/* ── INVENTORY KPIs ────────────────────────────── */}
+      <section>
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3 flex items-center gap-2">
+          <Warehouse className="h-4 w-4" /> Inventario
+        </h2>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <KpiCard
+            title="SKUs en Stock"
+            value={inventory?.distinct_skus ?? '—'}
+            subtitle={inventory ? `${fmt.number(inventory.stock_positions, 0)} posiciones` : undefined}
+            icon={Boxes}
+            loading={inventoryLoading}
+          />
+          <KpiCard
+            title="Valor de Inventario"
+            value={inventory ? fmt.currency(inventory.total_stock_value) : '—'}
+            icon={BarChart3}
+            loading={inventoryLoading}
+          />
+          <KpiCard
+            title="Lotes por Vencer (30d)"
+            value={inventory?.near_expiry_batches ?? '—'}
+            subtitle={inventory
+              ? `${inventory.expired_batches} vencidos · ${inventory.active_alerts} alertas`
+              : undefined}
+            icon={CalendarClock}
+            alert={(inventory?.expired_batches ?? 0) > 0}
+            loading={inventoryLoading}
+          />
+          <KpiCard
+            title="Ajustes Pendientes"
+            value={inventory?.pending_adjustments ?? '—'}
+            subtitle={inventory
+              ? `${fmt.number(inventory.movements_today, 0)} movimientos hoy`
+              : undefined}
+            icon={ClipboardList}
+            alert={(inventory?.pending_adjustments ?? 0) > 0}
+            loading={inventoryLoading}
           />
         </div>
       </section>

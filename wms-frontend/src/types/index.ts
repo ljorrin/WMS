@@ -351,6 +351,17 @@ export interface OutboundMetrics {
   order_fill_rate_pct?: number
 }
 
+export interface InventoryMetrics {
+  distinct_skus: number
+  stock_positions: number
+  total_stock_value?: number
+  near_expiry_batches: number
+  expired_batches: number
+  active_alerts: number
+  pending_adjustments: number
+  movements_today: number
+}
+
 // ── Throughput (series para gráficas) ─────────────────
 export interface InboundThroughputPoint {
   day: string

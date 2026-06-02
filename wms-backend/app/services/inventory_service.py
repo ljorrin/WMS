@@ -763,3 +763,120 @@ class InventoryService:
 
         except Exception as e:
             logger.warning("Failed to check stock alerts", error=str(e))
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # DASHBOARD
+    # ══════════════════════════════════════════════════════════════════════════
+
+    async def get_dashboard_metrics(self, warehouse_id: Optional[uuid.UUID] = None) -> dict:
+        """KPIs del módulo de inventario para el dashboard inicial.
+
+        Solo lectura; no modifica el esquema. Filtra por tenant (y warehouse si se
+        provee). Agrega stock, vencimientos, alertas, ajustes y movimientos del día.
+        """
+        from datetime import date
+        from sqlalchemy import and_, func, select
+
+        from app.models.inventory import (
+            Batch,
+            InventoryAdjustment,
+            InventoryLevel,
+            InventoryMovement,
+            StockAlert,
+            AdjustmentStatus,
+        )
+
+        today = date.today()
+
+        def _wh(filters, model):
+            if warehouse_id is not None:
+                filters.append(model.warehouse_id == warehouse_id)
+            return filters
+
+        # Stock: posiciones con existencia y SKUs distintos
+        lvl_filters = _wh(
+            [InventoryLevel.tenant_id == self.tenant_id, InventoryLevel.quantity_on_hand > 0],
+            InventoryLevel,
+        )
+        stock_positions = (
+            await self.db.execute(select(func.count(InventoryLevel.id)).where(and_(*lvl_filters)))
+        ).scalar_one()
+        distinct_skus = (
+            await self.db.execute(
+                select(func.count(func.distinct(InventoryLevel.product_id))).where(and_(*lvl_filters))
+            )
+        ).scalar_one()
+        total_stock_value = (
+            await self.db.execute(
+                select(func.coalesce(func.sum(InventoryLevel.total_value), 0)).where(and_(*lvl_filters))
+            )
+        ).scalar_one()
+
+        # Vencimientos (lotes)
+        near_filters = _wh(
+            [
+                Batch.tenant_id == self.tenant_id,
+                Batch.expiry_date.isnot(None),
+                Batch.expiry_date >= today,
+                Batch.expiry_date <= today + timedelta(days=30),
+            ],
+            Batch,
+        )
+        near_expiry_batches = (
+            await self.db.execute(select(func.count(Batch.id)).where(and_(*near_filters)))
+        ).scalar_one()
+        expired_filters = _wh(
+            [
+                Batch.tenant_id == self.tenant_id,
+                Batch.expiry_date.isnot(None),
+                Batch.expiry_date < today,
+            ],
+            Batch,
+        )
+        expired_batches = (
+            await self.db.execute(select(func.count(Batch.id)).where(and_(*expired_filters)))
+        ).scalar_one()
+
+        # Alertas activas
+        alert_filters = _wh(
+            [StockAlert.tenant_id == self.tenant_id, StockAlert.is_resolved == False],  # noqa: E712
+            StockAlert,
+        )
+        active_alerts = (
+            await self.db.execute(select(func.count(StockAlert.id)).where(and_(*alert_filters)))
+        ).scalar_one()
+
+        # Ajustes pendientes de aprobación
+        adj_filters = _wh(
+            [
+                InventoryAdjustment.tenant_id == self.tenant_id,
+                InventoryAdjustment.status == AdjustmentStatus.PENDING_APPROVAL,
+            ],
+            InventoryAdjustment,
+        )
+        pending_adjustments = (
+            await self.db.execute(select(func.count(InventoryAdjustment.id)).where(and_(*adj_filters)))
+        ).scalar_one()
+
+        # Movimientos de hoy
+        mov_filters = _wh(
+            [
+                InventoryMovement.tenant_id == self.tenant_id,
+                func.date(InventoryMovement.occurred_at) == today,
+            ],
+            InventoryMovement,
+        )
+        movements_today = (
+            await self.db.execute(select(func.count(InventoryMovement.id)).where(and_(*mov_filters)))
+        ).scalar_one()
+
+        return {
+            "distinct_skus": distinct_skus,
+            "stock_positions": stock_positions,
+            "total_stock_value": total_stock_value,
+            "near_expiry_batches": near_expiry_batches,
+            "expired_batches": expired_batches,
+            "active_alerts": active_alerts,
+            "pending_adjustments": pending_adjustments,
+            "movements_today": movements_today,
+        }

@@ -466,3 +466,22 @@ class MovementQueryParams(WMSSchema):
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     user_id: Optional[uuid.UUID] = None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD / KPIs INVENTARIO
+# ══════════════════════════════════════════════════════════════════════════════
+
+class InventoryDashboardMetrics(WMSSchema):
+    """KPIs del módulo de inventario para el dashboard inicial."""
+    # Stock
+    distinct_skus: int
+    stock_positions: int
+    total_stock_value: Optional[Decimal] = None
+    # Calidad / vencimientos
+    near_expiry_batches: int
+    expired_batches: int
+    active_alerts: int
+    # Operación
+    pending_adjustments: int
+    movements_today: int

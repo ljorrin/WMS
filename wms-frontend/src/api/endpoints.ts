@@ -7,7 +7,7 @@ import type {
   InventoryLevel, StockSummary,
   InventoryAdjustment, PurchaseOrder, GoodsReceipt,
   PutawayTask, SalesOrder, PickingWave, PickingTask,
-  Shipment, InboundMetrics, OutboundMetrics,
+  Shipment, InboundMetrics, OutboundMetrics, InventoryMetrics,
   Warehouse, MovementRow, BatchListResponse,
   QualityInspection, PackTask, ReturnOrder,
   ThroughputResponse, InboundThroughputPoint, OutboundThroughputPoint,
@@ -96,6 +96,11 @@ export const inventoryApi = {
   getExpired: (warehouseId: string) =>
     api.get<BatchListResponse>('/inventory/batches/expired', {
       params: { warehouse_id: warehouseId },
+    }).then(r => r.data),
+
+  getDashboard: (warehouseId?: string) =>
+    api.get<InventoryMetrics>('/inventory/dashboard', {
+      params: warehouseId ? { warehouse_id: warehouseId } : {},
     }).then(r => r.data),
 }
 
