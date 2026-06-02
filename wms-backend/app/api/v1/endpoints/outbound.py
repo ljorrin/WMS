@@ -692,3 +692,29 @@ async def outbound_throughput(
 ):
     svc = _svc(db, current_user)
     return await svc.get_throughput_series(days=days, warehouse_id=warehouse_id)
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DOCUMENTOS DE DESPACHO (FR-061)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get(
+    "/shipments/{shipment_id}/packing-list",
+    summary="Lista de empaque / remisión (PDF)",
+    dependencies=[Depends(require_permission("outbound:shipping:manage"))],
+)
+async def shipment_packing_list(shipment_id: UUID, db: DBDep, current_user: CurrentUserDep):
+    """Genera la Lista de Empaque / Remisión del envío en PDF (FR-061)."""
+    from app.services.document_service import build_packing_list_pdf
+
+    svc = _svc(db, current_user)
+    shipment = await svc.ship_repo.get_by_id(shipment_id)
+    if not shipment:
+        raise HTTPException(status_code=404, detail="Envío no encontrado.")
+    so = await svc.so_repo.get_by_id(shipment.so_id)
+    pdf = build_packing_list_pdf(shipment, so)
+    filename = f"packing-list-{getattr(shipment, 'shipment_number', shipment_id)}.pdf"
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={filename}"},
+    )

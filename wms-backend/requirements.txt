@@ -60,3 +60,4 @@ black==24.10.0
 isort==5.13.2
 flake8==7.1.1
 mypy==1.13.0
+reportlab==4.4.10  # generación de PDFs de despacho (FR-061)

@@ -718,6 +718,19 @@ class InboundService:
         putaway_open = await self.putaway_repo.get_open_count()
         avg_cycle_time = await self.putaway_repo.get_avg_cycle_time()
 
+        # Precisión de recepción = recibido / ordenado sobre líneas de OC (FR-072)
+        from app.models.inbound import PurchaseOrderLine
+        racc = (
+            await self.db.execute(
+                select(
+                    func.coalesce(func.sum(PurchaseOrderLine.quantity_ordered), 0),
+                    func.coalesce(func.sum(PurchaseOrderLine.quantity_received), 0),
+                ).where(PurchaseOrderLine.tenant_id == self.tenant_id)
+            )
+        ).one()
+        ord_qty, rec_qty = racc[0] or Decimal("0"), racc[1] or Decimal("0")
+        receipt_accuracy = round(Decimal(rec_qty) / Decimal(ord_qty) * 100, 2) if ord_qty else None
+
         return {
             "pos_open": pos_open,
             "pos_pending_receipt": pos_open,
@@ -729,7 +742,7 @@ class InboundService:
             "rtv_pending": rtv_pending,
             "avg_putaway_cycle_time_seconds": avg_cycle_time,
             "putaway_tasks_open": putaway_open,
-            "receipt_accuracy_pct": None,  # Futuro: ratio GRN qty vs PO qty
+            "receipt_accuracy_pct": receipt_accuracy,
         }
 
     async def get_throughput_series(

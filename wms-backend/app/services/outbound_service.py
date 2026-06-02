@@ -619,6 +619,39 @@ class OutboundService:
             )
         ).scalar_one()
 
+        # On-Time Delivery y Fill Rate (FR-072)
+        from app.models.outbound import SalesOrderLine as SO_line
+        wh = [SO_m.warehouse_id == warehouse_id] if warehouse_id else []
+        delivered_total = (
+            await self.db.execute(
+                select(func.count(SO_m.id)).where(and_(
+                    SO_m.tenant_id == self.tenant_id, SO_m.status == SOStatus.DELIVERED, *wh))
+            )
+        ).scalar_one()
+        delivered_on_time = (
+            await self.db.execute(
+                select(func.count(SO_m.id)).where(and_(
+                    SO_m.tenant_id == self.tenant_id, SO_m.status == SOStatus.DELIVERED,
+                    SO_m.requested_delivery_date.isnot(None),
+                    SO_m.delivered_date <= SO_m.requested_delivery_date, *wh))
+            )
+        ).scalar_one()
+        otd_pct = round(Decimal(delivered_on_time) / Decimal(delivered_total) * 100, 2) if delivered_total else None
+
+        fill = (
+            await self.db.execute(
+                select(
+                    func.coalesce(func.sum(SO_line.quantity_ordered), 0),
+                    func.coalesce(func.sum(SO_line.quantity_shipped), 0),
+                )
+                .select_from(SO_line).join(SO_m, SO_line.so_id == SO_m.id)
+                .where(and_(SO_m.tenant_id == self.tenant_id,
+                            SO_m.status.in_([SOStatus.SHIPPED, SOStatus.DELIVERED]), *wh))
+            )
+        ).one()
+        ordered_qty, shipped_qty = fill[0] or Decimal("0"), fill[1] or Decimal("0")
+        fill_rate_pct = round(Decimal(shipped_qty) / Decimal(ordered_qty) * 100, 2) if ordered_qty else None
+
         orders_overdue = await self.so_repo.get_overdue(warehouse_id)
         picks_today = await self.pick_repo.count_today()
         avg_pick_time = await self.pick_repo.get_avg_cycle_time()
@@ -639,10 +672,10 @@ class OutboundService:
             "waves_open": waves_open,
             "shipments_today": shipments_today,
             "shipments_in_transit": shipments_in_transit,
-            "on_time_delivery_pct": None,   # Futuro: basado en promised vs actual delivery
+            "on_time_delivery_pct": otd_pct,
             "short_pick_rate_pct": short_pick_rate,
             "rma_open": rma_open,
-            "order_fill_rate_pct": None,    # Futuro: qty_shipped / qty_ordered * 100
+            "order_fill_rate_pct": fill_rate_pct,
         }
 
     async def get_throughput_series(

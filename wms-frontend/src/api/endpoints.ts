@@ -273,4 +273,8 @@ export const outboundApi = {
     api.get<ThroughputResponse<OutboundThroughputPoint>>('/outbound/dashboard/throughput', {
       params: { days, ...(warehouseId ? { warehouse_id: warehouseId } : {}) },
     }).then(r => r.data),
+
+  // Documento de despacho (FR-061): lista de empaque / remisión en PDF
+  getPackingListPdf: (shipmentId: string) =>
+    api.get<Blob>(`/outbound/shipments/${shipmentId}/packing-list`, { responseType: 'blob' }).then(r => r.data),
 }
