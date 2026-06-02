@@ -645,8 +645,8 @@ class AuditLog(WMSTenantBase):
     after_data: Mapped[Optional[dict]] = mapped_column(
         JSONB, comment="Estado del registro DESPUES del cambio"
     )
-    metadata: Mapped[Optional[dict]] = mapped_column(
-        JSONB, comment="Informacion adicional del evento"
+    event_metadata: Mapped[Optional[dict]] = mapped_column(
+        "metadata", JSONB, comment="Informacion adicional del evento"
     )
     description: Mapped[Optional[str]] = mapped_column(
         Text, comment="Descripcion legible del evento para auditores"

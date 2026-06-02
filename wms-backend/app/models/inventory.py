@@ -491,7 +491,7 @@ class InventoryMovement(WMSTenantBase):
         String(100), comment="ID del documento creado en el ERP"
     )
 
-    metadata: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
+    movement_metadata: Mapped[Optional[dict]] = mapped_column("metadata", JSONB, default=dict)
 
     __table_args__ = (
         Index("ix_inv_movements_tenant_warehouse", "tenant_id", "warehouse_id"),
@@ -808,11 +808,62 @@ class InventoryAdjustment(WMSTenantBase):
         nullable=True
     )
 
+    lines: Mapped[List["AdjustmentLine"]] = relationship(
+        back_populates="adjustment", cascade="all, delete-orphan"
+    )
+
     __table_args__ = (
         UniqueConstraint("warehouse_id", "adjustment_number",
                          name="uq_adjustments_warehouse_number"),
         Index("ix_adjustments_warehouse_status", "warehouse_id", "status"),
         Index("ix_adjustments_tenant", "tenant_id"),
+    )
+
+
+class AdjustmentLine(WMSTenantBase):
+    """
+    Línea de un ajuste de inventario (un SKU/ubicación con su varianza).
+    Un InventoryAdjustment puede agrupar múltiples líneas contadas.
+    """
+    __tablename__ = "inventory_adjustment_lines"
+
+    adjustment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("inventory_adjustments.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+    location_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("locations.id", ondelete="RESTRICT"),
+        nullable=False
+    )
+    batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("batches.id", ondelete="RESTRICT"),
+        nullable=True
+    )
+    lot_number: Mapped[Optional[str]] = mapped_column(String(50))
+
+    quantity_system: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    quantity_physical: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
+    variance: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False, default=0)
+    variance_type: Mapped[str] = mapped_column(
+        String(20), default="none",
+        comment="surplus | shortage | none"
+    )
+    unit_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 4))
+    total_variance_cost: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
+
+    adjustment: Mapped["InventoryAdjustment"] = relationship(back_populates="lines")
+
+    __table_args__ = (
+        Index("ix_adjustment_lines_adjustment", "adjustment_id"),
     )
 
 

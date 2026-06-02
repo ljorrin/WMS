@@ -29,7 +29,8 @@ from app.models.inventory import (
     InventoryStatus, MovementType, ReservationType,
     InventoryAdjustment, AdjustmentLine, CycleCount, CycleCountLine,
 )
-from app.models.master_data import Product, Location, Warehouse
+from app.models.master_data import Product, Location
+from app.models.core import Warehouse
 from app.repositories.inventory import (
     InventoryLevelRepository,
     InventoryMovementRepository,
@@ -352,7 +353,7 @@ class InventoryService:
         adj = await self.adjustments.create(
             tenant_id=self.tenant_id,
             warehouse_id=body.warehouse_id,
-            created_by=self.user_id,
+            created_by_id=self.user_id,
             reason=body.reason,
             reason_code=body.reason_code,
             notes=body.notes,
@@ -586,7 +587,7 @@ class InventoryService:
             warehouse_id=body.warehouse_id,
             name=body.name,
             count_type=body.count_type,
-            created_by=self.user_id,
+            created_by_id=self.user_id,
             scheduled_date=body.scheduled_date,
             notes=body.notes,
         )

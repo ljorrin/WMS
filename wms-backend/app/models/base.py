@@ -70,12 +70,12 @@ class AuditMixin:
     Mixin de auditoria de creacion y modificacion.
     Registra quien creo y quien modifico cada registro.
     """
-    created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
         comment="UUID del usuario que creo el registro"
     )
-    updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
+    updated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         nullable=True,
         comment="UUID del usuario que hizo la ultima modificacion"

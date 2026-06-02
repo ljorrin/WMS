@@ -515,7 +515,7 @@ class AdjustmentRepository:
             reason_code=reason_code,
             notes=notes,
             status="draft",
-            created_by=created_by,
+            created_by_id=created_by,
         )
         self.db.add(adj)
         await self.db.flush()
@@ -607,7 +607,7 @@ class CycleCountRepository:
             status="draft",
             scheduled_date=scheduled_date,
             notes=notes,
-            created_by=created_by,
+            created_by_id=created_by,
         )
         self.db.add(cc)
         await self.db.flush()
