@@ -41,7 +41,7 @@ from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -634,7 +634,7 @@ async def create_reservation(
 
 @router.delete(
     "/reservations/{reservation_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Cancelar reserva",
 )
 async def cancel_reservation(
