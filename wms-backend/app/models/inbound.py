@@ -324,7 +324,7 @@ class ASN(WMSTenantBase):
         ForeignKey("suppliers.id", ondelete="RESTRICT"),
         nullable=False
     )
-    purchase_order_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    po_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("purchase_orders.id", ondelete="RESTRICT"),
         nullable=True,
@@ -332,7 +332,7 @@ class ASN(WMSTenantBase):
     )
 
     asn_number: Mapped[str] = mapped_column(String(50), nullable=False)
-    supplier_reference: Mapped[Optional[str]] = mapped_column(
+    supplier_asn_reference: Mapped[Optional[str]] = mapped_column(
         String(100), comment="Numero de referencia del proveedor"
     )
     status: Mapped[ASNStatus] = mapped_column(
@@ -345,25 +345,31 @@ class ASN(WMSTenantBase):
         ForeignKey("carriers.id", ondelete="SET NULL"),
         nullable=True
     )
+    carrier_name: Mapped[Optional[str]] = mapped_column(
+        String(200), comment="Nombre del transportista (texto libre)"
+    )
     tracking_number: Mapped[Optional[str]] = mapped_column(String(100))
-    plate_number: Mapped[Optional[str]] = mapped_column(
+    vehicle_plate: Mapped[Optional[str]] = mapped_column(
         String(20), comment="Placa del camion para YMS"
     )
     container_number: Mapped[Optional[str]] = mapped_column(
         String(20), comment="Numero de contenedor maritimo"
     )
-    seal_number: Mapped[Optional[str]] = mapped_column(String(30))
+    seal_number: Mapped[Optional[str]] = mapped_column(String(50))
 
     # Fechas
     ship_date: Mapped[Optional[date]] = mapped_column(Date)
-    expected_arrival: Mapped[Optional[datetime]] = mapped_column(
+    expected_arrival_date: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), index=True,
         comment="Fecha/hora esperada de llegada al patio"
     )
-    actual_arrival: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    actual_arrival_date: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     dock_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         comment="Dock asignado por YMS"
+    )
+    dock_number: Mapped[Optional[str]] = mapped_column(
+        String(20), comment="Identificador de muelle asignado"
     )
 
     # Totales esperados
@@ -373,8 +379,11 @@ class ASN(WMSTenantBase):
     total_volume_m3: Mapped[Optional[float]] = mapped_column(Numeric(8, 3))
 
     # Aduanas
-    customs_reference: Mapped[Optional[str]] = mapped_column(
+    customs_document_id: Mapped[Optional[str]] = mapped_column(
         String(50), comment="Numero de DAM o documento aduanero vinculado"
+    )
+    customs_reference: Mapped[Optional[str]] = mapped_column(
+        String(100), comment="Referencia aduanera adicional"
     )
     is_customs_cleared: Mapped[bool] = mapped_column(Boolean, default=False)
 
@@ -398,7 +407,7 @@ class ASN(WMSTenantBase):
         UniqueConstraint("warehouse_id", "asn_number",
                          name="uq_asn_warehouse_number"),
         Index("ix_asn_warehouse_status", "warehouse_id", "status"),
-        Index("ix_asn_expected_arrival", "expected_arrival", "status"),
+        Index("ix_asn_expected_arrival", "expected_arrival_date", "status"),
         Index("ix_asn_supplier", "supplier_id"),
     )
 
@@ -430,6 +439,7 @@ class ASNLine(WMSTenantBase):
     quantity_expected: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
     quantity_received: Mapped[Decimal] = mapped_column(Numeric(15, 4), default=0)
     uom: Mapped[str] = mapped_column(String(20), default="UN")
+    uom_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     # Datos del lote esperado
     batch_number: Mapped[Optional[str]] = mapped_column(String(100))
@@ -440,6 +450,10 @@ class ASNLine(WMSTenantBase):
     sscc: Mapped[Optional[str]] = mapped_column(
         String(18), comment="SSCC del palet esperado"
     )
+    gtin: Mapped[Optional[str]] = mapped_column(
+        String(14), comment="GTIN esperado"
+    )
+    country_of_origin: Mapped[Optional[str]] = mapped_column(String(2))
 
     status: Mapped[str] = mapped_column(String(20), default="pending")
 

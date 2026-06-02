@@ -164,7 +164,7 @@ class POQueryParams(BaseModel):
 class ASNLineCreate(BaseModel):
     po_line_id: Optional[UUID] = None
     product_id: UUID
-    uom_id: UUID
+    uom_id: Optional[UUID] = None
     quantity_expected: Decimal = Field(..., gt=0, decimal_places=4)
     batch_number: Optional[str] = Field(None, max_length=50)
     expiry_date: Optional[date] = None
@@ -227,9 +227,9 @@ class ASNResponse(BaseModel):
     customs_document_id: Optional[str]
     customs_reference: Optional[str]
     is_customs_cleared: bool
-    notes: Optional[str]
+    notes: Optional[str] = None
     lines: List[ASNLineResponse] = []
-    created_by_id: UUID
+    created_by_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 
