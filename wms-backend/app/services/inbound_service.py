@@ -424,7 +424,7 @@ class InboundService:
                 rtv = await self.rtv_repo.create(
                     data=dict(
                         grn_id=qi.grn_id,
-                        supplier_id=grn.lines[0].product_id if grn.lines else None,  # placeholder
+                        supplier_id=getattr(grn, "supplier_id", None),
                         warehouse_id=grn.warehouse_id,
                         reason=disposition_notes or "Rechazado por control de calidad.",
                         credit_expected=Decimal("0"),
@@ -457,10 +457,11 @@ class InboundService:
                 if qty > 0:
                     tasks_data.append(
                         dict(
+                            warehouse_id=grn.warehouse_id,
                             grn_id=grn.id,
                             grn_line_id=line.id,
                             product_id=line.product_id,
-                            uom_id=line.uom_id,
+                            uom=getattr(line, "uom", "UN"),
                             quantity=qty,
                             from_location_id=line.location_id,
                             suggested_location_id=None,  # Putaway Rules futuras
@@ -515,12 +516,13 @@ class InboundService:
 
         # Ingresar stock al inventario
         await self.inv_service.receive_stock(
-            location_id=actual_location_id,
+            warehouse_id=task.warehouse_id,
             product_id=task.product_id,
-            uom_id=task.uom_id,
+            location_id=actual_location_id,
             quantity=task.quantity,
-            batch_id=task.batch_id,
-            reference=f"PUTAWAY-{task_id}",
+            reference_type="putaway",
+            reference_id=task_id,
+            reference_number=f"PUTAWAY-{task_id}",
         )
 
         # Marcar tarea completada
@@ -571,7 +573,6 @@ class InboundService:
             supplier_id=supplier_id,
             warehouse_id=warehouse_id,
             reason=reason,
-            credit_received=Decimal("0"),
             **kwargs,
         )
         rtv = await self.rtv_repo.create(data=data, created_by_id=self.user_id)

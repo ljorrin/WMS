@@ -412,6 +412,9 @@ class GRNRepository:
         count = result.scalar_one()
         return f"GRN-{count + 1:06d}"
 
+    # Mapeo de campos del schema/servicio → columnas del modelo
+    _HEADER_FIELD_MAP = {"po_id": "purchase_order_id"}
+
     async def create(
         self,
         data: dict,
@@ -419,13 +422,18 @@ class GRNRepository:
         received_by_id: UUID,
     ) -> GoodsReceipt:
         grn_number = await self._next_grn_number()
+        header = {
+            self._HEADER_FIELD_MAP.get(k, k): v
+            for k, v in data.items()
+            if v is not None
+        }
         grn = GoodsReceipt(
             id=uuid4(),
             tenant_id=self.tenant_id,
             grn_number=grn_number,
-            received_by_id=received_by_id,
+            received_by=received_by_id,
             received_at=datetime.now(timezone.utc),
-            **data,
+            **header,
         )
         self.db.add(grn)
         await self.db.flush()
@@ -436,7 +444,7 @@ class GRNRepository:
                 tenant_id=self.tenant_id,
                 grn_id=grn.id,
                 line_number=i,
-                **ld,
+                **{k: v for k, v in ld.items() if v is not None},
             )
             self.db.add(line)
 

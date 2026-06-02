@@ -256,11 +256,10 @@ class GRNLineCreate(BaseModel):
     asn_line_id: Optional[UUID] = None
     po_line_id: Optional[UUID] = None
     product_id: UUID
-    uom_id: UUID
     location_id: UUID   # Ubicación temporal de recepción (staging area)
     quantity_received: Decimal = Field(..., gt=0, decimal_places=4)
     quantity_rejected: Decimal = Field(Decimal("0"), ge=0, decimal_places=4)
-    batch_number: Optional[str] = Field(None, max_length=50)
+    batch_number: Optional[str] = Field(None, max_length=100)
     expiry_date: Optional[date] = None
     manufacture_date: Optional[date] = None
     unit_cost: Optional[Decimal] = Field(None, ge=0, decimal_places=4)
@@ -279,11 +278,22 @@ class GRNLineCreate(BaseModel):
         return self
 
 
-class GRNLineResponse(GRNLineCreate):
+class GRNLineResponse(BaseModel):
     id: UUID
     grn_id: UUID
+    product_id: UUID
     line_number: int
+    quantity_received: Decimal
+    quantity_rejected: Decimal
+    quantity_accepted: Optional[Decimal] = None
+    location_id: Optional[UUID] = None
+    batch_number: Optional[str] = None
+    expiry_date: Optional[date] = None
+    uom: Optional[str] = None
+    sscc: Optional[str] = None
+    item_temp_celsius: Optional[Decimal] = None
     status: str
+    notes: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -306,25 +316,27 @@ class GRNResponse(BaseModel):
     id: UUID
     tenant_id: UUID
     warehouse_id: UUID
-    asn_id: Optional[UUID]
-    po_id: Optional[UUID]
+    asn_id: Optional[UUID] = None
+    # El frontend usa `po_id`; el modelo lo almacena en `purchase_order_id`.
+    po_id: Optional[UUID] = Field(None, validation_alias="purchase_order_id")
     grn_number: str
     status: GRNStatus
     receiving_mode: ReceivingMode
-    dock_number: Optional[str]
-    received_at: Optional[datetime]
-    confirmed_at: Optional[datetime]
-    ambient_temp_celsius: Optional[Decimal]
-    product_temp_celsius: Optional[Decimal]
+    dock_number: Optional[str] = None
+    received_at: Optional[datetime] = None
+    confirmed_at: Optional[datetime] = None
+    ambient_temp_celsius: Optional[Decimal] = None
+    product_temp_celsius: Optional[Decimal] = None
     requires_qc: bool
-    notes: Optional[str]
-    erp_synced_at: Optional[datetime]
+    notes: Optional[str] = None
+    erp_synced_at: Optional[datetime] = None
     lines: List[GRNLineResponse] = []
-    received_by_id: UUID
+    # El frontend usa `received_by_id`; el modelo lo almacena en `received_by`.
+    received_by_id: Optional[UUID] = Field(None, validation_alias="received_by")
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class GRNListResponse(BaseModel):
@@ -412,17 +424,17 @@ class QualityInspectionResponse(BaseModel):
     defect_rate: Optional[Decimal]
     disposition: Optional[str]
     disposition_notes: Optional[str]
-    inspection_date: Optional[datetime]
-    completed_at: Optional[datetime]
-    photo_urls: Optional[List[str]] = []
-    notes: Optional[str]
+    inspection_date: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    photo_urls: Optional[List[str]] = Field(None, validation_alias="photos")
+    notes: Optional[str] = None
     lines: List[QCLineResponse] = []
-    inspector_id: Optional[UUID]
-    created_by_id: UUID
+    inspector_id: Optional[UUID] = None
+    created_by_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -432,24 +444,23 @@ class QualityInspectionResponse(BaseModel):
 class PutawayTaskResponse(BaseModel):
     id: UUID
     tenant_id: UUID
-    grn_id: Optional[UUID]
-    grn_line_id: Optional[UUID]
+    grn_id: Optional[UUID] = None
+    grn_line_id: Optional[UUID] = None
     product_id: UUID
-    batch_id: Optional[UUID]
+    batch_id: Optional[UUID] = None
     quantity: Decimal
-    uom_id: UUID
-    from_location_id: Optional[UUID]
-    suggested_location_id: Optional[UUID]
-    actual_location_id: Optional[UUID]
+    uom: Optional[str] = None
+    from_location_id: Optional[UUID] = None
+    suggested_location_id: Optional[UUID] = None
+    actual_location_id: Optional[UUID] = None
     status: PutawayStatus
     priority: int
-    putaway_rule_id: Optional[UUID]
-    assigned_to_id: Optional[UUID]
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    cycle_time_seconds: Optional[int]
-    override_reason: Optional[str]
-    notes: Optional[str]
+    assigned_to_id: Optional[UUID] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    cycle_time_seconds: Optional[int] = None
+    override_reason: Optional[str] = None
+    notes: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
