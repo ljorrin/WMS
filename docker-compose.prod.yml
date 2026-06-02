@@ -43,6 +43,8 @@ services:
     environment:
       ENVIRONMENT: production
       WORKERS: "4"
+    # Aplica migraciones (alembic upgrade head) antes de arrancar el servidor.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4 --log-level info"
     depends_on:
       postgres:
         condition: service_healthy

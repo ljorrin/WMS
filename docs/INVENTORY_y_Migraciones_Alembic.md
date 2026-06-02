@@ -28,13 +28,42 @@ El ajuste es **cabecera + líneas** (`InventoryAdjustment` + `AdjustmentLine`), 
 - **Saneos aplicados al script** (defectos reales del autogenerate, detectados al renderizar SQL):
   1. `Text` no estaba importado (`postgresql.JSONB(astext_type=Text())`) → añadido `from sqlalchemy import Text`.
   2. Tipos ENUM compartidos por varias tablas (p. ej. `receivingmode`, `shippingcarriertype`, `industrytype`) provocaban `CREATE TYPE` duplicado → se crean **una sola vez** al inicio de `upgrade()` (`postgresql.ENUM(...).create(bind, checkfirst=True)`) y las columnas usan `postgresql.ENUM(..., create_type=False)`; `downgrade()` hace `DROP TYPE IF EXISTS`.
-- **Validación offline contra el dialecto Postgres** (`alembic upgrade head --sql`): exit 0, **44 CREATE TYPE (0 duplicados)**, **52 CREATE TABLE** (incl. `alembic_version`), cierra en `COMMIT`. `downgrade ... --sql`: 52 DROP TABLE + 44 DROP TYPE.
+  3. `gen_random_uuid()` (server_default de los PK): `upgrade()` ahora ejecuta `CREATE EXTENSION IF NOT EXISTS pgcrypto` al inicio (idempotente; en PG16 ya es core, pero hace la migración autosuficiente en cualquier entorno).
+- **Validación offline contra el dialecto Postgres** (`alembic upgrade head --sql`): exit 0, `CREATE EXTENSION pgcrypto` + **44 CREATE TYPE (0 duplicados)** + **52 CREATE TABLE** (incl. `alembic_version`), cierra en `COMMIT`. `downgrade ... --sql`: 52 DROP TABLE + 44 DROP TYPE.
 
-### Cómo aplicarla (en una BD Postgres real)
+### Aplicación automática en arranque (docker compose)
+El servicio `api` ahora ejecuta las migraciones antes de servir, tanto en
+desarrollo (`wms-backend/docker-compose.yml`) como en producción
+(`docker-compose.prod.yml`):
+
+```yaml
+command: sh -c "alembic upgrade head && uvicorn app.main:app ..."
+```
+
+El `api` ya espera a `postgres` (`depends_on: condition: service_healthy`) y
+`scripts/postgres/init.sql` crea las extensiones (`pgcrypto`, etc.). Por lo
+tanto, un `docker compose up` sobre una BD limpia aplica el esquema solo.
+
+### Aplicación manual
+
 ```bash
+# Dentro del contenedor api (objetivo del Makefile)
+make db-upgrade            # docker compose exec api alembic upgrade head
+make db-downgrade          # baja una revisión
+make db-history            # historial
+make db-current            # revisión actual
+
+# O directamente contra una BD Postgres
 cd wms-backend
 export DATABASE_SYNC_URL="postgresql+psycopg2://<user>:<pwd>@<host>:5432/<db>"
 alembic upgrade head            # aplica el esquema
-# alembic upgrade head --sql    # solo generar SQL para revisión
+alembic upgrade head --sql      # solo generar SQL para revisión
 ```
-> Nota: la validación se hizo en modo offline (render de SQL) porque el sandbox no tiene Postgres. Conviene ejecutar `alembic upgrade head` contra una BD limpia antes de producción. Si el esquema ya existía vía `create_all`, usar `alembic stamp head` para marcar el baseline.
+
+> Si una BD ya tenía el esquema (creado fuera de Alembic), marca el baseline
+> sin re-crear nada: `alembic stamp head`.
+>
+> Nota: la validación en este repo se hizo en modo **offline** (render de SQL)
+> porque el entorno de desarrollo no disponía de PostgreSQL. Ejecuta
+> `alembic upgrade head` contra una BD limpia para la validación en vivo
+> (y, opcionalmente, `pytest tests/integration_db` apuntando a esa BD).
