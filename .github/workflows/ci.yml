@@ -14,9 +14,10 @@ name: WMS Panama CI/CD
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, "feature/**"]
   pull_request:
     branches: [main, develop]
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
@@ -122,22 +123,29 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt aiosqlite --break-system-packages
 
-      - name: Run migrations
+      - name: Run migrations (valida alembic upgrade head contra PostgreSQL real)
         env:
           DATABASE_SYNC_URL: "postgresql+psycopg2://wms:wmspass@localhost:5432/wmsdb_test"
         run: alembic upgrade head
 
-      - name: Run integration tests
+      - name: Create integration test database
+        env:
+          PGPASSWORD: wmspass
+        run: psql -h localhost -U wms -d wmsdb_test -c "CREATE DATABASE wms_itest;"
+
+      - name: Run integration tests (PostgreSQL real · repo+service+modelo)
         env:
           SECRET_KEY: "ci-secret-key-for-testing-only-must-be-32chars"
           DATABASE_URL: "postgresql+asyncpg://wms:wmspass@localhost:5432/wmsdb_test"
+          DATABASE_SYNC_URL: "postgresql+psycopg2://wms:wmspass@localhost:5432/wmsdb_test"
           REDIS_URL: "redis://localhost:6379/0"
           ENVIRONMENT: "test"
+          # La suite integration_db crea/elimina el esquema en una BD dedicada
+          WMS_TEST_DATABASE_URL: "postgresql+asyncpg://wms:wmspass@localhost:5432/wms_itest"
         run: |
-          python -m pytest tests/integration/ \
+          python -m pytest tests/integration_db/ \
             -v --tb=short \
-            --junitxml=reports/integration-tests.xml \
-            -x
+            --junitxml=reports/integration-tests.xml
 
       - name: Upload test results
         uses: actions/upload-artifact@v4
