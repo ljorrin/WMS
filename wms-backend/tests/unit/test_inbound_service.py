@@ -610,3 +610,99 @@ class TestInboundSchemaValidations:
         with pytest.raises(ValueError, match="mayor a 0"):
             if qty <= 0:
                 raise ValueError("quantity_ordered debe ser mayor a 0.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 11. EDICIÓN, BORRADO LÓGICO E HISTORIAL DE ESTADOS — PURCHASE ORDER (Inbound v2)
+# ══════════════════════════════════════════════════════════════════════════════
+
+import asyncio
+from unittest.mock import MagicMock as _MM, AsyncMock as _AM
+
+from app.services.inbound_service import InboundService
+from app.models.inbound import POStatus
+
+
+def _make_service():
+    """Instancia InboundService con db y repos mockeados (sin BD real)."""
+    svc = InboundService(db=_MM(), tenant_id=uuid4(), user_id=uuid4())
+    svc.db.commit = _AM()
+    svc.po_repo = _MM()
+    svc.po_repo.get_by_id = _AM()
+    svc.po_repo.update_fields = _AM()
+    svc.po_repo.soft_delete = _AM()
+    svc.po_repo.update_status = _AM()
+    svc.po_repo.add_status_history = _AM()
+    return svc
+
+
+def _po(status):
+    po = _MM()
+    po.id = uuid4()
+    po.status = status
+    return po
+
+
+class TestPOEditDeleteHistory:
+    """Edición, borrado lógico e historial de estados de OC."""
+
+    def test_update_allowed_in_draft(self):
+        svc = _make_service()
+        svc.po_repo.get_by_id.return_value = _po(POStatus.DRAFT)
+        asyncio.run(svc.update_purchase_order(uuid4(), {"notes": "x", "incoterms": None}))
+        # Solo se persisten campos no nulos
+        svc.po_repo.update_fields.assert_awaited_once()
+        _, kwargs = svc.po_repo.update_fields.call_args
+        args = svc.po_repo.update_fields.call_args.args
+        assert args[1] == {"notes": "x"}
+
+    def test_update_rejected_when_not_draft(self):
+        svc = _make_service()
+        svc.po_repo.get_by_id.return_value = _po(POStatus.CONFIRMED)
+        with pytest.raises(POStateError):
+            asyncio.run(svc.update_purchase_order(uuid4(), {"notes": "x"}))
+        svc.po_repo.update_fields.assert_not_awaited()
+
+    def test_update_missing_po_raises(self):
+        svc = _make_service()
+        svc.po_repo.get_by_id.return_value = None
+        with pytest.raises(InboundServiceError):
+            asyncio.run(svc.update_purchase_order(uuid4(), {"notes": "x"}))
+
+    def test_delete_allowed_in_draft(self):
+        svc = _make_service()
+        svc.po_repo.get_by_id.return_value = _po(POStatus.DRAFT)
+        asyncio.run(svc.delete_purchase_order(uuid4(), reason="duplicada"))
+        svc.po_repo.soft_delete.assert_awaited_once()
+
+    def test_delete_allowed_in_cancelled(self):
+        svc = _make_service()
+        svc.po_repo.get_by_id.return_value = _po(POStatus.CANCELLED)
+        asyncio.run(svc.delete_purchase_order(uuid4()))
+        svc.po_repo.soft_delete.assert_awaited_once()
+
+    def test_delete_rejected_in_confirmed(self):
+        svc = _make_service()
+        svc.po_repo.get_by_id.return_value = _po(POStatus.CONFIRMED)
+        with pytest.raises(POStateError):
+            asyncio.run(svc.delete_purchase_order(uuid4()))
+        svc.po_repo.soft_delete.assert_not_awaited()
+
+    def test_confirm_records_status_history(self):
+        svc = _make_service()
+        svc.po_repo.get_by_id.return_value = _po(POStatus.DRAFT)
+        asyncio.run(svc.confirm_purchase_order(uuid4()))
+        svc.po_repo.update_status.assert_awaited_once()
+        svc.po_repo.add_status_history.assert_awaited_once()
+        _, kwargs = svc.po_repo.add_status_history.call_args
+        assert kwargs["from_status"] == POStatus.DRAFT.value
+        assert kwargs["to_status"] == POStatus.CONFIRMED.value
+
+    def test_cancel_records_status_history(self):
+        svc = _make_service()
+        svc.po_repo.get_by_id.return_value = _po(POStatus.CONFIRMED)
+        asyncio.run(svc.cancel_purchase_order(uuid4(), reason="proveedor canceló"))
+        svc.po_repo.add_status_history.assert_awaited_once()
+        _, kwargs = svc.po_repo.add_status_history.call_args
+        assert kwargs["to_status"] == POStatus.CANCELLED.value
+        assert kwargs["reason"] == "proveedor canceló"

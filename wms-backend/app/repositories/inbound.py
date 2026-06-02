@@ -23,13 +23,13 @@ from sqlalchemy.orm import selectinload
 
 from app.models.inbound import (
     ASN,
-    GRN,
     ASNLine,
     ASNStatus,
     GoodsReceipt,
     GoodsReceiptLine,
     GRNStatus,
     POStatus,
+    POStatusHistory,
     PurchaseOrder,
     PurchaseOrderLine,
     PutawayStatus,
@@ -66,6 +66,15 @@ class PurchaseOrderRepository:
 
     # ── CRUD ──────────────────────────────────────────────────────────────────
 
+    # Mapeo de campos del schema de línea → columnas del modelo
+    _LINE_FIELD_MAP = {"unit_cost": "unit_price", "line_note": "notes"}
+
+    def _map_line(self, ld: dict) -> dict:
+        mapped: dict = {}
+        for key, value in ld.items():
+            mapped[self._LINE_FIELD_MAP.get(key, key)] = value
+        return mapped
+
     async def create(
         self,
         data: dict,
@@ -78,23 +87,29 @@ class PurchaseOrderRepository:
             tenant_id=self.tenant_id,
             po_number=po_number,
             created_by_id=created_by_id,
-            **{k: v for k, v in data.items() if k != "po_number"},
+            **{k: v for k, v in data.items() if k != "po_number" and v is not None},
         )
         self.db.add(po)
         await self.db.flush()  # obtener ID sin commit
 
         total = Decimal("0")
         for i, ld in enumerate(lines_data, start=1):
+            mapped = self._map_line(ld)
+            qty = mapped.get("quantity_ordered") or Decimal("0")
+            unit_price = mapped.get("unit_price")
+            line_total = (qty * unit_price) if unit_price is not None else None
             line = PurchaseOrderLine(
                 id=uuid4(),
                 tenant_id=self.tenant_id,
-                po_id=po.id,
+                purchase_order_id=po.id,
                 line_number=i,
-                **ld,
+                quantity_pending=qty,
+                line_total=line_total,
+                **{k: v for k, v in mapped.items() if v is not None},
             )
             self.db.add(line)
-            if ld.get("unit_cost"):
-                total += ld["quantity_ordered"] * ld["unit_cost"]
+            if line_total is not None:
+                total += line_total
 
         po.total_amount = total
         await self.db.flush()
@@ -103,11 +118,15 @@ class PurchaseOrderRepository:
     async def get_by_id(self, po_id: UUID) -> Optional[PurchaseOrder]:
         result = await self.db.execute(
             select(PurchaseOrder)
-            .options(selectinload(PurchaseOrder.lines))
+            .options(
+                selectinload(PurchaseOrder.lines),
+                selectinload(PurchaseOrder.status_history),
+            )
             .where(
                 and_(
                     PurchaseOrder.id == po_id,
                     PurchaseOrder.tenant_id == self.tenant_id,
+                    PurchaseOrder.deleted_at.is_(None),
                 )
             )
         )
@@ -124,7 +143,10 @@ class PurchaseOrderRepository:
         page: int = 1,
         page_size: int = 50,
     ) -> tuple[List[PurchaseOrder], int]:
-        filters = [PurchaseOrder.tenant_id == self.tenant_id]
+        filters = [
+            PurchaseOrder.tenant_id == self.tenant_id,
+            PurchaseOrder.deleted_at.is_(None),
+        ]
 
         if warehouse_id:
             filters.append(PurchaseOrder.warehouse_id == warehouse_id)
@@ -158,6 +180,61 @@ class PurchaseOrderRepository:
         )
         rows = (await self.db.execute(q)).scalars().all()
         return list(rows), total
+
+    async def update_fields(self, po_id: UUID, fields: dict) -> None:
+        """Actualiza campos de cabecera de una OC (edición)."""
+        if not fields:
+            return
+        await self.db.execute(
+            update(PurchaseOrder)
+            .where(
+                and_(
+                    PurchaseOrder.id == po_id,
+                    PurchaseOrder.tenant_id == self.tenant_id,
+                    PurchaseOrder.deleted_at.is_(None),
+                )
+            )
+            .values(updated_at=datetime.now(timezone.utc), **fields)
+        )
+
+    async def soft_delete(self, po_id: UUID, deleted_by: UUID) -> None:
+        """Eliminación lógica: marca deleted_at sin borrar físicamente."""
+        await self.db.execute(
+            update(PurchaseOrder)
+            .where(
+                and_(
+                    PurchaseOrder.id == po_id,
+                    PurchaseOrder.tenant_id == self.tenant_id,
+                )
+            )
+            .values(
+                deleted_at=datetime.now(timezone.utc),
+                deleted_by=deleted_by,
+                updated_at=datetime.now(timezone.utc),
+            )
+        )
+
+    async def add_status_history(
+        self,
+        po_id: UUID,
+        from_status: Optional[str],
+        to_status: str,
+        changed_by_id: Optional[UUID],
+        reason: Optional[str] = None,
+    ) -> None:
+        """Registra una transición de estado en el historial de la OC."""
+        self.db.add(
+            POStatusHistory(
+                id=uuid4(),
+                tenant_id=self.tenant_id,
+                purchase_order_id=po_id,
+                from_status=from_status,
+                to_status=to_status,
+                changed_by_id=changed_by_id,
+                reason=reason,
+            )
+        )
+        await self.db.flush()
 
     async def update_status(self, po_id: UUID, status: POStatus) -> None:
         extra: dict = {}

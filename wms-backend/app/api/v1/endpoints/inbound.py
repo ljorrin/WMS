@@ -177,6 +177,29 @@ async def confirm_purchase_order(
         raise HTTPException(status_code=409, detail=str(e))
 
 
+@router.put(
+    "/purchase-orders/{po_id}",
+    response_model=PurchaseOrderResponse,
+    summary="Editar OC (solo en DRAFT)",
+    dependencies=[Depends(require_permission("inbound:po:update"))],
+)
+async def update_purchase_order(
+    po_id: UUID,
+    payload: PurchaseOrderUpdate,
+    db: DBDep,
+    current_user: CurrentUserDep,
+):
+    svc = _svc(db, current_user)
+    try:
+        po = await svc.update_purchase_order(po_id, payload.model_dump(exclude_unset=True))
+        await db.commit()
+        return po
+    except POStateError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except InboundServiceError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+
 @router.post(
     "/purchase-orders/{po_id}/cancel",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -195,6 +218,28 @@ async def cancel_purchase_order(
         await db.commit()
     except (InboundServiceError, POStateError) as e:
         raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.delete(
+    "/purchase-orders/{po_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Eliminar OC (borrado lógico, solo DRAFT/CANCELLED)",
+    dependencies=[Depends(require_permission("inbound:po:delete"))],
+)
+async def delete_purchase_order(
+    po_id: UUID,
+    reason: str = Query("", max_length=500),
+    db: DBDep = None,
+    current_user: CurrentUserDep = None,
+):
+    svc = _svc(db, current_user)
+    try:
+        await svc.delete_purchase_order(po_id, reason=reason)
+        await db.commit()
+    except POStateError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except InboundServiceError as e:
+        raise HTTPException(status_code=404, detail=str(e))
 
 
 # ══════════════════════════════════════════════════════════════════════════════

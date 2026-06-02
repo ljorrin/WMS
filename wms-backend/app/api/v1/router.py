@@ -7,7 +7,7 @@ Prefijo: /api/v1
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, health, tenants, users, warehouses, inventory, inbound, outbound, ai
+from app.api.v1.endpoints import auth, health, tenants, users, warehouses, master_data, inventory, inbound, outbound, ai
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -19,6 +19,7 @@ api_router.include_router(auth.router,       prefix="/auth",       tags=["🔐 A
 api_router.include_router(tenants.router,    prefix="/tenants",    tags=["🏢 Tenants"])
 api_router.include_router(users.router,      prefix="/users",      tags=["👤 Users"])
 api_router.include_router(warehouses.router, prefix="/warehouses", tags=["🏭 Warehouses"])
+api_router.include_router(master_data.router, prefix="/master",     tags=["📚 Master Data"])
 
 # ── Módulos WMS ────────────────────────────────────────────────────────────────
 api_router.include_router(inventory.router,  prefix="/inventory",  tags=["📦 Inventory"])

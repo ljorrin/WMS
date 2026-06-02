@@ -101,11 +101,49 @@ class InboundService:
             status=POStatus.DRAFT,
             **kwargs,
         )
-        return await self.po_repo.create(
+        po = await self.po_repo.create(
             data=data,
             lines_data=lines_data,
             created_by_id=self.user_id,
         )
+        await self.po_repo.add_status_history(
+            po_id=po.id,
+            from_status=None,
+            to_status=POStatus.DRAFT.value,
+            changed_by_id=self.user_id,
+            reason="Creación de la orden de compra",
+        )
+        return po
+
+    # Estados de OC que admiten edición/eliminación
+    _PO_EDITABLE_STATES = (POStatus.DRAFT,)
+    _PO_DELETABLE_STATES = (POStatus.DRAFT, POStatus.CANCELLED)
+
+    async def update_purchase_order(self, po_id: UUID, fields: dict):
+        """Editar cabecera de una OC. Solo permitido en estado DRAFT."""
+        po = await self.po_repo.get_by_id(po_id)
+        if not po:
+            raise InboundServiceError(f"PO {po_id} no encontrada.")
+        if po.status not in self._PO_EDITABLE_STATES:
+            raise POStateError(
+                f"Solo se puede editar una OC en DRAFT. Estado actual: {po.status}"
+            )
+        clean = {k: v for k, v in fields.items() if v is not None}
+        await self.po_repo.update_fields(po_id, clean)
+        log.info("po.updated", po_id=str(po_id), fields=list(clean.keys()))
+        return await self.po_repo.get_by_id(po_id)
+
+    async def delete_purchase_order(self, po_id: UUID, reason: str = ""):
+        """Eliminación lógica de una OC. Solo en DRAFT o CANCELLED."""
+        po = await self.po_repo.get_by_id(po_id)
+        if not po:
+            raise InboundServiceError(f"PO {po_id} no encontrada.")
+        if po.status not in self._PO_DELETABLE_STATES:
+            raise POStateError(
+                f"Solo se puede eliminar una OC en DRAFT o CANCELLED. Estado actual: {po.status}"
+            )
+        await self.po_repo.soft_delete(po_id, deleted_by=self.user_id)
+        log.info("po.deleted", po_id=str(po_id), reason=reason)
 
     async def confirm_purchase_order(self, po_id: UUID):
         """Confirmar OC: DRAFT → CONFIRMED."""
@@ -117,6 +155,13 @@ class InboundService:
                 f"Solo se puede confirmar una OC en DRAFT. Estado actual: {po.status}"
             )
         await self.po_repo.update_status(po_id, POStatus.CONFIRMED)
+        await self.po_repo.add_status_history(
+            po_id=po_id,
+            from_status=POStatus.DRAFT.value,
+            to_status=POStatus.CONFIRMED.value,
+            changed_by_id=self.user_id,
+            reason="Confirmación de la orden de compra",
+        )
         log.info("po.confirmed", po_id=str(po_id))
 
     async def cancel_purchase_order(self, po_id: UUID, reason: str = ""):
@@ -126,7 +171,15 @@ class InboundService:
             raise InboundServiceError(f"PO {po_id} no encontrada.")
         if po.status in (POStatus.CLOSED, POStatus.CANCELLED):
             raise POStateError(f"No se puede cancelar. Estado actual: {po.status}")
+        prev_status = po.status.value if hasattr(po.status, "value") else str(po.status)
         await self.po_repo.update_status(po_id, POStatus.CANCELLED)
+        await self.po_repo.add_status_history(
+            po_id=po_id,
+            from_status=prev_status,
+            to_status=POStatus.CANCELLED.value,
+            changed_by_id=self.user_id,
+            reason=reason or "Cancelación de la orden de compra",
+        )
         log.info("po.cancelled", po_id=str(po_id), reason=reason)
 
     # ══════════════════════════════════════════════════════════════════════════

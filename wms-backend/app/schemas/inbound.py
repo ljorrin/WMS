@@ -31,32 +31,30 @@ from app.models.inbound import (
 
 class PurchaseOrderLineCreate(BaseModel):
     product_id: UUID
-    uom_id: UUID
-    description: Optional[str] = None
     quantity_ordered: Decimal = Field(..., gt=0, decimal_places=4)
     unit_cost: Optional[Decimal] = Field(None, ge=0, decimal_places=4)
-    currency: str = Field("USD", max_length=3)
-    tax_rate: Decimal = Field(Decimal("0"), ge=0, le=1, decimal_places=4)
+    uom: Optional[str] = Field(None, max_length=20)
     line_note: Optional[str] = Field(None, max_length=500)
-    requested_delivery_date: Optional[date] = None
-    # GS1
-    gtin: Optional[str] = Field(None, max_length=14)
-    country_of_origin: Optional[str] = Field(None, max_length=2)
-    hs_code: Optional[str] = Field(None, max_length=10)
 
 
-class PurchaseOrderLineResponse(PurchaseOrderLineCreate):
+class PurchaseOrderLineResponse(BaseModel):
     id: UUID
-    po_id: UUID
+    purchase_order_id: UUID
+    product_id: UUID
     line_number: int
+    quantity_ordered: Decimal
     quantity_received: Decimal
     quantity_pending: Decimal
     quantity_rejected: Decimal
+    uom: Optional[str] = None
+    # El frontend usa `unit_cost`; el modelo lo almacena en `unit_price`.
+    unit_cost: Optional[Decimal] = Field(None, validation_alias="unit_price")
+    line_total: Optional[Decimal] = None
     status: str
     created_at: datetime
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    model_config = {"from_attributes": True, "populate_by_name": True}
 
 
 class PurchaseOrderCreate(BaseModel):
@@ -67,15 +65,15 @@ class PurchaseOrderCreate(BaseModel):
     order_date: date
     expected_delivery_date: Optional[date] = None
     payment_terms: Optional[str] = Field(None, max_length=100)
-    incoterms: Optional[str] = Field(None, max_length=11)
+    incoterms: Optional[str] = Field(None, max_length=10)
     currency: str = Field("USD", max_length=3)
     notes: Optional[str] = Field(None, max_length=2000)
     # Panama Aduanas
-    customs_document_id: Optional[str] = Field(None, max_length=50)
+    customs_document_id: Optional[UUID] = None
     is_import: bool = False
     country_of_origin: Optional[str] = Field(None, max_length=2)
     # ERP
-    erp_reference: Optional[str] = Field(None, max_length=100)
+    erp_reference: Optional[str] = Field(None, max_length=50)
     # Líneas
     lines: List[PurchaseOrderLineCreate] = Field(..., min_length=1)
 
@@ -88,12 +86,28 @@ class PurchaseOrderCreate(BaseModel):
 
 
 class PurchaseOrderUpdate(BaseModel):
+    """Campos editables de una OC (solo en estado DRAFT)."""
+    supplier_po_reference: Optional[str] = Field(None, max_length=100)
     expected_delivery_date: Optional[date] = None
     payment_terms: Optional[str] = Field(None, max_length=100)
-    incoterms: Optional[str] = Field(None, max_length=11)
+    incoterms: Optional[str] = Field(None, max_length=10)
+    currency: Optional[str] = Field(None, max_length=3)
     notes: Optional[str] = Field(None, max_length=2000)
-    erp_reference: Optional[str] = Field(None, max_length=100)
-    customs_document_id: Optional[str] = Field(None, max_length=50)
+    erp_reference: Optional[str] = Field(None, max_length=50)
+    customs_document_id: Optional[UUID] = None
+    is_import: Optional[bool] = None
+    country_of_origin: Optional[str] = Field(None, max_length=2)
+
+
+class POStatusHistoryResponse(BaseModel):
+    id: UUID
+    from_status: Optional[str] = None
+    to_status: str
+    changed_by_id: Optional[UUID] = None
+    reason: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 class PurchaseOrderResponse(BaseModel):
@@ -102,24 +116,25 @@ class PurchaseOrderResponse(BaseModel):
     warehouse_id: UUID
     supplier_id: UUID
     po_number: str
-    supplier_po_reference: Optional[str]
+    supplier_po_reference: Optional[str] = None
     status: POStatus
     order_date: date
-    expected_delivery_date: Optional[date]
-    confirmed_date: Optional[datetime]
-    closed_date: Optional[datetime]
-    payment_terms: Optional[str]
-    incoterms: Optional[str]
+    expected_delivery_date: Optional[date] = None
+    confirmed_date: Optional[datetime] = None
+    closed_date: Optional[datetime] = None
+    payment_terms: Optional[str] = None
+    incoterms: Optional[str] = None
     currency: str
-    total_amount: Decimal
-    notes: Optional[str]
-    customs_document_id: Optional[str]
+    total_amount: Optional[Decimal] = None
+    notes: Optional[str] = None
+    customs_document_id: Optional[UUID] = None
     is_import: bool
-    country_of_origin: Optional[str]
-    erp_reference: Optional[str]
-    erp_synced_at: Optional[datetime]
+    country_of_origin: Optional[str] = None
+    erp_reference: Optional[str] = None
+    erp_synced_at: Optional[datetime] = None
     lines: List[PurchaseOrderLineResponse] = []
-    created_by_id: UUID
+    status_history: List[POStatusHistoryResponse] = []
+    created_by_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 

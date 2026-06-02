@@ -124,9 +124,13 @@ class PurchaseOrder(WMSTenantBase):
         String(50), nullable=False,
         comment="Numero de OC (generado por WMS o heredado del ERP)"
     )
-    erp_po_number: Mapped[Optional[str]] = mapped_column(
+    erp_reference: Mapped[Optional[str]] = mapped_column(
         String(50), nullable=True, index=True,
         comment="Numero de OC en el ERP (SAP, Oracle, Dynamics)"
+    )
+    supplier_po_reference: Mapped[Optional[str]] = mapped_column(
+        String(100), nullable=True,
+        comment="Referencia de OC del proveedor"
     )
 
     status: Mapped[POStatus] = mapped_column(
@@ -135,11 +139,14 @@ class PurchaseOrder(WMSTenantBase):
 
     # Fechas
     order_date: Mapped[date] = mapped_column(Date, nullable=False)
-    expected_date: Mapped[Optional[date]] = mapped_column(
+    expected_delivery_date: Mapped[Optional[date]] = mapped_column(
         Date, comment="Fecha esperada de entrega"
     )
-    confirmed_date: Mapped[Optional[date]] = mapped_column(
-        Date, comment="Fecha confirmada por el proveedor"
+    confirmed_date: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), comment="Fecha confirmada por el proveedor"
+    )
+    closed_date: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), comment="Fecha de cierre/cancelacion"
     )
 
     # Valores
@@ -165,7 +172,7 @@ class PurchaseOrder(WMSTenantBase):
 
     # Sincronizacion ERP
     erp_synced: Mapped[bool] = mapped_column(Boolean, default=False)
-    erp_sync_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
+    erp_synced_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     notes: Mapped[Optional[str]] = mapped_column(Text)
     custom_attributes: Mapped[Optional[dict]] = mapped_column(JSONB, default=dict)
@@ -175,14 +182,19 @@ class PurchaseOrder(WMSTenantBase):
         back_populates="purchase_order", order_by="PurchaseOrderLine.line_number"
     )
     asns: Mapped[List["ASN"]] = relationship(back_populates="purchase_order")
+    status_history: Mapped[List["POStatusHistory"]] = relationship(
+        back_populates="purchase_order",
+        order_by="POStatusHistory.created_at",
+        cascade="all, delete-orphan",
+    )
 
     __table_args__ = (
         UniqueConstraint("warehouse_id", "po_number",
                          name="uq_po_warehouse_number"),
         Index("ix_po_tenant_warehouse", "tenant_id", "warehouse_id"),
         Index("ix_po_supplier_status", "supplier_id", "status"),
-        Index("ix_po_erp_number", "erp_po_number"),
-        Index("ix_po_expected_date", "expected_date", "status"),
+        Index("ix_po_erp_number", "erp_reference"),
+        Index("ix_po_expected_date", "expected_delivery_date", "status"),
     )
 
     def __repr__(self) -> str:
@@ -249,6 +261,47 @@ class PurchaseOrderLine(WMSTenantBase):
         Index("ix_po_lines_order", "purchase_order_id"),
         Index("ix_po_lines_product", "product_id"),
     )
+
+
+class POStatusHistory(WMSTenantBase):
+    """
+    Historial de cambios de estado de una Orden de Compra.
+    Registra cada transicion (quien, cuando, de->a, motivo) para auditoria.
+    """
+    __tablename__ = "po_status_history"
+
+    purchase_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("purchase_orders.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    from_status: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True,
+        comment="Estado anterior (NULL al crear la OC)"
+    )
+    to_status: Mapped[str] = mapped_column(
+        String(20), nullable=False,
+        comment="Estado al que transiciona la OC"
+    )
+    changed_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True,
+        comment="Usuario que ejecuto la transicion"
+    )
+    reason: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True,
+        comment="Motivo o comentario de la transicion"
+    )
+
+    purchase_order: Mapped["PurchaseOrder"] = relationship(
+        back_populates="status_history"
+    )
+
+    __table_args__ = (
+        Index("ix_po_status_hist_order", "purchase_order_id", "created_at"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<POStatusHistory {self.purchase_order_id} {self.from_status}->{self.to_status}>"
 
 
 # ─── ASN ──────────────────────────────────────────────────────────────────────
