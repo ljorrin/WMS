@@ -13,6 +13,7 @@ Permisos requeridos:
 """
 
 from __future__ import annotations
+from fastapi import Response
 
 from decimal import Decimal
 from typing import Optional
@@ -160,7 +161,7 @@ async def get_purchase_order(
 
 @router.post(
     "/purchase-orders/{po_id}/confirm",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Confirmar OC",
     dependencies=[Depends(require_permission("inbound:po:confirm"))],
 )
@@ -202,7 +203,7 @@ async def update_purchase_order(
 
 @router.post(
     "/purchase-orders/{po_id}/cancel",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Cancelar OC",
     dependencies=[Depends(require_permission("inbound:po:cancel"))],
 )
@@ -222,7 +223,7 @@ async def cancel_purchase_order(
 
 @router.delete(
     "/purchase-orders/{po_id}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Eliminar OC (borrado lógico, solo DRAFT/CANCELLED)",
     dependencies=[Depends(require_permission("inbound:po:delete"))],
 )
@@ -320,7 +321,7 @@ async def get_asn(asn_id: UUID, db: DBDep, current_user: CurrentUserDep):
 
 @router.post(
     "/asn/{asn_id}/dispatch",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Despachar ASN (IN_TRANSIT)",
     dependencies=[Depends(require_permission("inbound:asn:create"))],
 )
@@ -335,7 +336,7 @@ async def dispatch_asn(asn_id: UUID, db: DBDep, current_user: CurrentUserDep):
 
 @router.post(
     "/asn/{asn_id}/arrive",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Registrar llegada de ASN al almacén",
     dependencies=[Depends(require_permission("inbound:grn:create"))],
 )
@@ -437,7 +438,7 @@ async def get_grn(grn_id: UUID, db: DBDep, current_user: CurrentUserDep):
 
 @router.post(
     "/grn/{grn_id}/confirm",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Confirmar GRN",
     dependencies=[Depends(require_permission("inbound:grn:confirm"))],
 )
@@ -591,7 +592,7 @@ async def get_putaway_task(task_id: UUID, db: DBDep, current_user: CurrentUserDe
 
 @router.post(
     "/putaway/{task_id}/start",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Iniciar tarea Putaway (RF)",
     dependencies=[Depends(require_permission("inbound:putaway:manage"))],
 )
@@ -606,7 +607,7 @@ async def start_putaway_task(task_id: UUID, db: DBDep, current_user: CurrentUser
 
 @router.post(
     "/putaway/{task_id}/complete",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Completar tarea Putaway (RF) — actualiza inventario",
     dependencies=[Depends(require_permission("inbound:putaway:manage"))],
 )
@@ -691,7 +692,7 @@ async def get_rtv(rtv_id: UUID, db: DBDep, current_user: CurrentUserDep):
 
 @router.post(
     "/rtv/{rtv_id}/ship",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Registrar despacho de RTV",
     dependencies=[Depends(require_permission("inbound:rtv:manage"))],
 )
@@ -706,7 +707,7 @@ async def ship_rtv(rtv_id: UUID, db: DBDep, current_user: CurrentUserDep):
 
 @router.post(
     "/rtv/{rtv_id}/credit",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Confirmar Nota de Crédito RTV",
     dependencies=[Depends(require_permission("inbound:rtv:manage"))],
 )

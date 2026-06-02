@@ -8,6 +8,7 @@ WMS Panama — Endpoints AI/ML API v1
   /ai/assistant         — WMS RAG Chatbot (LangChain)
 """
 from __future__ import annotations
+from fastapi import Response
 from typing import Optional
 from uuid import UUID
 
@@ -140,7 +141,7 @@ async def list_alerts(
 
 @router.post(
     "/alerts/{alert_id}/resolve",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Marcar alerta como resuelta",
     dependencies=[Depends(require_permission("ai:forecast:create"))],
 )
@@ -280,7 +281,7 @@ async def list_anomalies(
 
 @router.post(
     "/anomalies/{anomaly_id}/resolve",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Resolver anomalía",
     dependencies=[Depends(require_permission("ai:anomaly:manage"))],
 )

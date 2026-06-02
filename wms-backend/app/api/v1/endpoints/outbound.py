@@ -13,6 +13,7 @@ Permisos:
 """
 
 from __future__ import annotations
+from fastapi import Response
 
 from decimal import Decimal
 from typing import Optional
@@ -153,7 +154,7 @@ async def get_sales_order(so_id: UUID, db: DBDep, current_user: CurrentUserDep):
 
 @router.post(
     "/orders/{so_id}/confirm",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Confirmar SO — reserva stock FEFO",
     dependencies=[Depends(require_permission("outbound:so:confirm"))],
 )
@@ -168,7 +169,7 @@ async def confirm_sales_order(so_id: UUID, db: DBDep, current_user: CurrentUserD
 
 @router.post(
     "/orders/{so_id}/cancel",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Cancelar SO",
     dependencies=[Depends(require_permission("outbound:so:cancel"))],
 )
@@ -324,7 +325,7 @@ async def get_pick_task(task_id: UUID, db: DBDep, current_user: CurrentUserDep):
 
 @router.post(
     "/picking/{task_id}/start",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Iniciar Picking (RF)",
     dependencies=[Depends(require_permission("outbound:picking:manage"))],
 )
@@ -408,7 +409,7 @@ async def get_pack_task(task_id: UUID, db: DBDep, current_user: CurrentUserDep):
 
 @router.post(
     "/packing/{task_id}/start",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Iniciar Empaque",
     dependencies=[Depends(require_permission("outbound:packing:manage"))],
 )
@@ -423,7 +424,7 @@ async def start_pack_task(task_id: UUID, db: DBDep, current_user: CurrentUserDep
 
 @router.post(
     "/packing/{task_id}/complete",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Completar Empaque — SO pasa a PACKED",
     dependencies=[Depends(require_permission("outbound:packing:manage"))],
 )
@@ -519,7 +520,7 @@ async def get_shipment(shipment_id: UUID, db: DBDep, current_user: CurrentUserDe
 
 @router.post(
     "/shipments/{shipment_id}/dispatch",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Despachar Envío — SO pasa a SHIPPED",
     dependencies=[Depends(require_permission("outbound:shipping:manage"))],
 )
@@ -539,7 +540,7 @@ async def dispatch_shipment(
 
 @router.post(
     "/shipments/{shipment_id}/deliver",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Confirmar Entrega — SO pasa a DELIVERED",
     dependencies=[Depends(require_permission("outbound:shipping:manage"))],
 )
@@ -634,7 +635,7 @@ async def get_rma(rma_id: UUID, db: DBDep, current_user: CurrentUserDep):
 
 @router.post(
     "/returns/{rma_id}/receive",
-    status_code=status.HTTP_204_NO_CONTENT,
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Recibir Devolución — puede restockear inventario",
     dependencies=[Depends(require_permission("outbound:rma:manage"))],
 )

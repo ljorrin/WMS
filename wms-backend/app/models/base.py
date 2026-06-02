@@ -72,11 +72,13 @@ class AuditMixin:
     """
     created_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
+        name="created_by",
         nullable=True,
         comment="UUID del usuario que creo el registro"
     )
     updated_by_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
+        name="updated_by",
         nullable=True,
         comment="UUID del usuario que hizo la ultima modificacion"
     )
