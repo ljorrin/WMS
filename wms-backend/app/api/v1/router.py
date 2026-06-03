@@ -7,7 +7,7 @@ Prefijo: /api/v1
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, health, tenants, users, warehouses, master_data, inventory, inbound, outbound, ai
+from app.api.v1.endpoints import auth, health, tenants, users, warehouses, master_data, inventory, inbound, outbound, ai, realtime, integrations
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -26,3 +26,9 @@ api_router.include_router(inventory.router,  prefix="/inventory",  tags=["📦 I
 api_router.include_router(inbound.router,   prefix="/inbound",    tags=["🚚 Inbound"])
 api_router.include_router(outbound.router,  prefix="/outbound",   tags=["📤 Outbound"])
 api_router.include_router(ai.router,        prefix="/ai",         tags=["🤖 AI/ML"])
+
+# ── Tiempo real (WebSocket) ──────────────────────────────────────────────────
+api_router.include_router(realtime.router,  tags=["📡 Realtime"])
+
+# ── Integraciones (ERP, eCommerce, transporte, regulatorio Panamá) ───────────
+api_router.include_router(integrations.router, prefix="/integrations", tags=["🔌 Integraciones"])
