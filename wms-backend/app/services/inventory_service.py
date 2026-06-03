@@ -26,7 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.logging import get_logger
 from app.db.redis import distributed_lock
 from app.models.inventory import (
-    InventoryStatus, MovementType, ReservationType,
+    InventoryStatus, MovementType, ReservationType, AdjustmentStatus,
     InventoryAdjustment, AdjustmentLine, CycleCount, CycleCountLine,
 )
 from app.models.master_data import Product, Location
@@ -353,10 +353,11 @@ class InventoryService:
         adj = await self.adjustments.create(
             tenant_id=self.tenant_id,
             warehouse_id=body.warehouse_id,
-            created_by_id=self.user_id,
+            created_by=self.user_id,
             reason=body.reason,
             reason_code=body.reason_code,
             notes=body.notes,
+            reference_number=body.reference_number,
         )
 
         for line_data in body.lines:
@@ -378,7 +379,7 @@ class InventoryService:
             )
 
         # Pasar a pending_approval automáticamente
-        adj.status = "pending_approval"
+        adj.status = AdjustmentStatus.PENDING_APPROVAL
 
         logger.info(
             "Adjustment created",
@@ -400,19 +401,19 @@ class InventoryService:
         adj = await self.adjustments.get_by_id(adjustment_id, self.tenant_id)
         if not adj:
             raise InventoryServiceError("Ajuste no encontrado.", "NOT_FOUND")
-        if adj.status != "pending_approval":
+        if adj.status != AdjustmentStatus.PENDING_APPROVAL:
             raise InventoryServiceError(
                 f"El ajuste está en estado '{adj.status}'. Solo se puede aprobar/rechazar en 'pending_approval'.",
                 "INVALID_STATE",
             )
 
         if body.approved:
-            adj.status = "approved"
+            adj.status = AdjustmentStatus.APPROVED
             adj.approved_by = self.user_id
             adj.approved_at = datetime.now(timezone.utc)
         else:
-            adj.status = "rejected"
-            adj.approved_by = self.user_id
+            adj.status = AdjustmentStatus.REJECTED
+            adj.rejected_by = self.user_id
             adj.approved_at = datetime.now(timezone.utc)
 
         if body.notes:
@@ -428,7 +429,7 @@ class InventoryService:
         adj = await self.adjustments.get_by_id(adjustment_id, self.tenant_id)
         if not adj:
             raise InventoryServiceError("Ajuste no encontrado.", "NOT_FOUND")
-        if adj.status != "approved":
+        if adj.status != AdjustmentStatus.APPROVED:
             raise InventoryServiceError(
                 f"El ajuste debe estar 'approved' para aplicarse. Estado actual: {adj.status}",
                 "INVALID_STATE",
@@ -485,7 +486,7 @@ class InventoryService:
                 notes=f"Ajuste {adj.adjustment_number}: {adj.reason}",
             )
 
-        adj.status = "applied"
+        adj.status = AdjustmentStatus.APPLIED
         adj.applied_by = self.user_id
         adj.applied_at = datetime.now(timezone.utc)
 
@@ -762,3 +763,120 @@ class InventoryService:
 
         except Exception as e:
             logger.warning("Failed to check stock alerts", error=str(e))
+
+    # ══════════════════════════════════════════════════════════════════════════
+    # DASHBOARD
+    # ══════════════════════════════════════════════════════════════════════════
+
+    async def get_dashboard_metrics(self, warehouse_id: Optional[uuid.UUID] = None) -> dict:
+        """KPIs del módulo de inventario para el dashboard inicial.
+
+        Solo lectura; no modifica el esquema. Filtra por tenant (y warehouse si se
+        provee). Agrega stock, vencimientos, alertas, ajustes y movimientos del día.
+        """
+        from datetime import date
+        from sqlalchemy import and_, func, select
+
+        from app.models.inventory import (
+            Batch,
+            InventoryAdjustment,
+            InventoryLevel,
+            InventoryMovement,
+            StockAlert,
+            AdjustmentStatus,
+        )
+
+        today = date.today()
+
+        def _wh(filters, model):
+            if warehouse_id is not None:
+                filters.append(model.warehouse_id == warehouse_id)
+            return filters
+
+        # Stock: posiciones con existencia y SKUs distintos
+        lvl_filters = _wh(
+            [InventoryLevel.tenant_id == self.tenant_id, InventoryLevel.quantity_on_hand > 0],
+            InventoryLevel,
+        )
+        stock_positions = (
+            await self.db.execute(select(func.count(InventoryLevel.id)).where(and_(*lvl_filters)))
+        ).scalar_one()
+        distinct_skus = (
+            await self.db.execute(
+                select(func.count(func.distinct(InventoryLevel.product_id))).where(and_(*lvl_filters))
+            )
+        ).scalar_one()
+        total_stock_value = (
+            await self.db.execute(
+                select(func.coalesce(func.sum(InventoryLevel.total_value), 0)).where(and_(*lvl_filters))
+            )
+        ).scalar_one()
+
+        # Vencimientos (lotes)
+        near_filters = _wh(
+            [
+                Batch.tenant_id == self.tenant_id,
+                Batch.expiry_date.isnot(None),
+                Batch.expiry_date >= today,
+                Batch.expiry_date <= today + timedelta(days=30),
+            ],
+            Batch,
+        )
+        near_expiry_batches = (
+            await self.db.execute(select(func.count(Batch.id)).where(and_(*near_filters)))
+        ).scalar_one()
+        expired_filters = _wh(
+            [
+                Batch.tenant_id == self.tenant_id,
+                Batch.expiry_date.isnot(None),
+                Batch.expiry_date < today,
+            ],
+            Batch,
+        )
+        expired_batches = (
+            await self.db.execute(select(func.count(Batch.id)).where(and_(*expired_filters)))
+        ).scalar_one()
+
+        # Alertas activas
+        alert_filters = _wh(
+            [StockAlert.tenant_id == self.tenant_id, StockAlert.is_resolved == False],  # noqa: E712
+            StockAlert,
+        )
+        active_alerts = (
+            await self.db.execute(select(func.count(StockAlert.id)).where(and_(*alert_filters)))
+        ).scalar_one()
+
+        # Ajustes pendientes de aprobación
+        adj_filters = _wh(
+            [
+                InventoryAdjustment.tenant_id == self.tenant_id,
+                InventoryAdjustment.status == AdjustmentStatus.PENDING_APPROVAL,
+            ],
+            InventoryAdjustment,
+        )
+        pending_adjustments = (
+            await self.db.execute(select(func.count(InventoryAdjustment.id)).where(and_(*adj_filters)))
+        ).scalar_one()
+
+        # Movimientos de hoy
+        mov_filters = _wh(
+            [
+                InventoryMovement.tenant_id == self.tenant_id,
+                func.date(InventoryMovement.occurred_at) == today,
+            ],
+            InventoryMovement,
+        )
+        movements_today = (
+            await self.db.execute(select(func.count(InventoryMovement.id)).where(and_(*mov_filters)))
+        ).scalar_one()
+
+        return {
+            "distinct_skus": distinct_skus,
+            "stock_positions": stock_positions,
+            "total_stock_value": total_stock_value,
+            "near_expiry_batches": near_expiry_batches,
+            "expired_batches": expired_batches,
+            "active_alerts": active_alerts,
+            "pending_adjustments": pending_adjustments,
+            "movements_today": movements_today,
+        }

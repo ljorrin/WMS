@@ -29,7 +29,7 @@ from app.models.inventory import (
     InventoryLevel, InventoryMovement, InventoryReservation,
     InventoryAdjustment, AdjustmentLine, CycleCount, CycleCountLine,
     Batch, SerialNumber, StockAlert,
-    MovementType, InventoryStatus, ReservationType,
+    MovementType, InventoryStatus, ReservationType, AdjustmentStatus,
 )
 from app.models.master_data import Product, Location
 from app.core.logging import get_logger
@@ -497,6 +497,7 @@ class AdjustmentRepository:
         reason: str,
         reason_code: str,
         notes: Optional[str] = None,
+        reference_number: Optional[str] = None,
     ) -> InventoryAdjustment:
         """Crea el encabezado del ajuste y genera el número correlativo."""
         # Número correlativo por tenant
@@ -514,7 +515,9 @@ class AdjustmentRepository:
             reason=reason,
             reason_code=reason_code,
             notes=notes,
-            status="draft",
+            reference_number=reference_number,
+            status=AdjustmentStatus.DRAFT,
+            requested_by=created_by,
             created_by_id=created_by,
         )
         self.db.add(adj)
@@ -570,7 +573,12 @@ class AdjustmentRepository:
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.db.execute(count_stmt)).scalar_one()
 
-        stmt = stmt.offset(offset).limit(limit).order_by(InventoryAdjustment.created_at.desc())
+        stmt = (
+            stmt.options(selectinload(InventoryAdjustment.lines))
+            .offset(offset)
+            .limit(limit)
+            .order_by(InventoryAdjustment.created_at.desc())
+        )
         items = (await self.db.execute(stmt)).scalars().all()
         return items, total
 

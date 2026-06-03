@@ -78,12 +78,20 @@ GRNLine OK / QCLine OK
 | **Quality Control** | ✅ **100%** | crea inspección+líneas, totales y defect_rate; aprobar/rechazar |
 | **Putaway** | ✅ **100%** | generación de tareas + completado con movimiento de inventario |
 | **RTV** | ✅ **funcional** | crea/serializa; disparo automático desde rechazo de QC |
-| ASN (alta/dispatch/arrive) | ⚠️ pendiente | sin UI; enum alineado, pero el repo aún referencia columnas ASN no reconciliadas. No bloquea el flujo OC→GRN→QC→Putaway (que usa `po_id`, no ASN) |
+| **ASN (alta/dispatch/arrive)** | ✅ **funcional** (2026-06-02) | reconciliado; crea cabecera+líneas y serializa `ASNResponse`; `update_status` IN_TRANSIT/ARRIVED compila |
+
+> **Con ASN reconciliado, el módulo Inbound completo (PO · ASN · GRN · QC · Putaway · RTV) construye y serializa sin errores.**
+
+### ASN — detalle de la reconciliación
+- Modelo `ASN`: `purchase_order_id`→`po_id`, `supplier_reference`→`supplier_asn_reference`, `expected_arrival`→`expected_arrival_date`, `actual_arrival`→`actual_arrival_date`, `plate_number`→`vehicle_plate`; **+** `carrier_name`, `dock_number`, `customs_document_id`. Índice `ix_asn_expected_arrival` actualizado.
+- Modelo `ASNLine`: **+** `uom_id` (nullable), `gtin`, `country_of_origin`.
+- Schema: `ASNLineCreate.uom_id` ahora opcional (no existe tabla UOM; consistente con GRN); `ASNResponse.created_by_id` opcional.
+- Verificado: `repo.create` ASN+líneas con sesión mockeada → OK; serialización `ASNResponse`/`ASNLineResponse` → OK; `update_status(IN_TRANSIT/ARRIVED, dock_number)` compila. 51 tablas, router 115 rutas, 202 passed/1 preexistente, `tsc --noEmit` exit 0.
 
 ---
 
 ## 5. Pendiente (fuera del alcance de esta sesión)
 
-1. **ASN**: reconciliar `ASN`/`ASNLine` ↔ schema/repo (mismo patrón). El flujo principal OC→GRN no lo necesita.
-2. **Migraciones Alembic** para todos los cambios de esquema acumulados (renombrados de columna + columnas nuevas + 2 tablas de PO).
-3. **Tests de integración con BD** (la red de seguridad ausente que ocultó estos defectos).
+1. **Migraciones Alembic** para todos los cambios de esquema acumulados (renombrados de columna + columnas nuevas + 2 tablas de PO).
+2. **Tests de integración con BD** (la red de seguridad ausente que ocultó estos defectos).
+3. **Outbound / Inventory**: verificar runtime (probablemente con los mismos defectos schema↔modelo, aún sin reconciliar).

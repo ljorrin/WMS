@@ -59,6 +59,7 @@ from app.schemas.inventory import (
     InventoryReservationCreate, InventoryReservationResponse,
     BatchResponse, StockAlertResponse,
     StockQueryParams, MovementQueryParams,
+    InventoryDashboardMetrics,
 )
 
 router = APIRouter()
@@ -647,3 +648,20 @@ async def cancel_reservation(
         await svc.cancel_reservation(reservation_id)
     except InventoryServiceError as e:
         raise HTTPException(status_code=404, detail=e.message)
+
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+
+@router.get(
+    "/dashboard",
+    response_model=InventoryDashboardMetrics,
+    summary="KPIs del módulo de Inventario",
+    dependencies=[Depends(require_permission("inventory:read"))],
+)
+async def inventory_dashboard(
+    current_user: CurrentUserDep,
+    db: DBDep,
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+) -> InventoryDashboardMetrics:
+    svc = get_inventory_service(current_user, db)
+    return await svc.get_dashboard_metrics(warehouse_id=warehouse_id)

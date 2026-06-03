@@ -7,7 +7,7 @@ import type {
   InventoryLevel, StockSummary,
   InventoryAdjustment, PurchaseOrder, GoodsReceipt,
   PutawayTask, SalesOrder, PickingWave, PickingTask,
-  Shipment, InboundMetrics, OutboundMetrics,
+  Shipment, InboundMetrics, OutboundMetrics, InventoryMetrics,
   Warehouse, MovementRow, BatchListResponse,
   QualityInspection, PackTask, ReturnOrder,
   ThroughputResponse, InboundThroughputPoint, OutboundThroughputPoint,
@@ -58,6 +58,22 @@ export const masterApi = {
 
   getLocations: (params?: Record<string, unknown>) =>
     api.get<ListResponse<LocationLite>>('/master/locations', { params }).then(r => r.data),
+
+  // Alta / edición / carga masiva (FR-010/012/013/014/015)
+  createProduct: (data: unknown) =>
+    api.post<Product>('/master/products', data).then(r => r.data),
+  updateProduct: (id: string, data: unknown) =>
+    api.put<Product>(`/master/products/${id}`, data).then(r => r.data),
+  bulkImportProducts: (data: { dry_run: boolean; rows: unknown[] }) =>
+    api.post('/master/products/bulk-import', data).then(r => r.data),
+  createSupplier: (data: unknown) =>
+    api.post<Supplier>('/master/suppliers', data).then(r => r.data),
+  updateSupplier: (id: string, data: unknown) =>
+    api.put<Supplier>(`/master/suppliers/${id}`, data).then(r => r.data),
+  createLocation: (data: unknown) =>
+    api.post<LocationLite>('/master/locations', data).then(r => r.data),
+  updateLocation: (id: string, data: unknown) =>
+    api.put<LocationLite>(`/master/locations/${id}`, data).then(r => r.data),
 }
 
 // ── INVENTORY ─────────────────────────────────────────
@@ -96,6 +112,11 @@ export const inventoryApi = {
   getExpired: (warehouseId: string) =>
     api.get<BatchListResponse>('/inventory/batches/expired', {
       params: { warehouse_id: warehouseId },
+    }).then(r => r.data),
+
+  getDashboard: (warehouseId?: string) =>
+    api.get<InventoryMetrics>('/inventory/dashboard', {
+      params: warehouseId ? { warehouse_id: warehouseId } : {},
     }).then(r => r.data),
 }
 
@@ -252,4 +273,8 @@ export const outboundApi = {
     api.get<ThroughputResponse<OutboundThroughputPoint>>('/outbound/dashboard/throughput', {
       params: { days, ...(warehouseId ? { warehouse_id: warehouseId } : {}) },
     }).then(r => r.data),
+
+  // Documento de despacho (FR-061): lista de empaque / remisión en PDF
+  getPackingListPdf: (shipmentId: string) =>
+    api.get<Blob>(`/outbound/shipments/${shipmentId}/packing-list`, { responseType: 'blob' }).then(r => r.data),
 }

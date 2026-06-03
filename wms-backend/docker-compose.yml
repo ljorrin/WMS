@@ -88,7 +88,8 @@ services:
       target: development
     container_name: wms_api
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug
+    # Aplica migraciones (alembic upgrade head) antes de arrancar el servidor.
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug"
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wms_user}:${POSTGRES_PASSWORD:-wms_secret}@postgres:5432/${POSTGRES_DB:-wms_db}
       - DATABASE_SYNC_URL=postgresql+psycopg2://${POSTGRES_USER:-wms_user}:${POSTGRES_PASSWORD:-wms_secret}@postgres:5432/${POSTGRES_DB:-wms_db}

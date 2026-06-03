@@ -10,6 +10,13 @@
 *.p12
 secrets/
 
+# Token de acceso GitHub (PAT) usado por el Agente Git Release Manager.
+# NUNCA debe subirse al repositorio.
+gh_token
+gh_token.*
+**/gh_token
+**/gh_token.*
+
 # ===== Sistema operativo =====
 .DS_Store
 Thumbs.db
@@ -18,6 +25,11 @@ desktop.ini
 # Archivos temporales de Office (locks ~$...)
 ~$*
 *.tmp
+
+# Bases de datos locales / temporales (ej: SQLite usado para autogenerate)
+*.db
+*.sqlite
+*.sqlite3
 
 # ===== Python (backend) =====
 __pycache__/

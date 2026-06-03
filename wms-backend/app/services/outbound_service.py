@@ -47,6 +47,7 @@ from app.repositories.outbound import (
     SalesOrderRepository,
     ShipmentRepository,
 )
+from app.schemas.inventory import InventoryReservationCreate
 from app.services.inventory_service import InventoryService
 
 log = structlog.get_logger(__name__)
@@ -112,11 +113,15 @@ class OutboundService:
         for line in so.lines:
             try:
                 await self.inv_service.create_reservation(
-                    warehouse_id=so.warehouse_id,
-                    product_id=line.product_id,
-                    uom_id=line.uom_id,
-                    quantity=line.quantity_ordered,
-                    reference=f"SO-{so_id}",
+                    InventoryReservationCreate(
+                        warehouse_id=so.warehouse_id,
+                        product_id=line.product_id,
+                        quantity=line.quantity_ordered,
+                        reservation_type="soft",
+                        reference_type="SO",
+                        reference_id=so_id,
+                        reference_number=so.so_number,
+                    )
                 )
                 await self.so_repo.update_line_quantities(
                     line.id, "quantity_allocated", line.quantity_ordered
@@ -250,23 +255,25 @@ class OutboundService:
                 qty = line.quantity_allocated or line.quantity_ordered
 
                 # FEFO: obtener batches/ubicaciones disponibles
-                batches = await self.inv_service.inv_repo.get_available_batches_fefo(
+                batches = await self.inv_service.levels.get_available_batches_fefo(
+                    tenant_id=self.tenant_id,
                     warehouse_id=so.warehouse_id,
                     product_id=line.product_id,
                     quantity_needed=qty,
                 )
 
                 for batch_alloc in batches:
-                    alloc_qty = min(batch_alloc["available"], qty)
+                    level = batch_alloc["level"]
+                    alloc_qty = min(batch_alloc["quantity_to_use"], qty)
                     tasks_data.append(dict(
                         wave_id=wave_id,
                         so_id=so.id,
                         so_line_id=line.id,
                         product_id=line.product_id,
                         uom_id=line.uom_id,
-                        batch_id=batch_alloc.get("batch_id"),
+                        batch_id=level.batch_id,
                         quantity_requested=alloc_qty,
-                        from_location_id=batch_alloc["location_id"],
+                        from_location_id=level.location_id,
                         priority=so.priority,
                     ))
                     qty -= alloc_qty
@@ -330,15 +337,17 @@ class OutboundService:
                 "short_reason es obligatorio cuando hay short pick."
             )
 
-        # Descontar inventario
+        # Descontar inventario (pin a la ubicación de la tarea de picking)
         if quantity_picked > 0:
+            so = await self.so_repo.get_by_id(task.so_id)
             await self.inv_service.pick_stock(
-                location_id=task.from_location_id,
+                warehouse_id=so.warehouse_id,
                 product_id=task.product_id,
-                uom_id=task.uom_id,
                 quantity=quantity_picked,
-                batch_id=task.batch_id,
-                reference=f"PICK-{task_id}",
+                reference_type="SO",
+                reference_id=task.so_id,
+                reference_number=f"PICK-{task_id}",
+                force_location_id=task.from_location_id,
             )
 
         # Completar tarea en BD
@@ -610,6 +619,39 @@ class OutboundService:
             )
         ).scalar_one()
 
+        # On-Time Delivery y Fill Rate (FR-072)
+        from app.models.outbound import SalesOrderLine as SO_line
+        wh = [SO_m.warehouse_id == warehouse_id] if warehouse_id else []
+        delivered_total = (
+            await self.db.execute(
+                select(func.count(SO_m.id)).where(and_(
+                    SO_m.tenant_id == self.tenant_id, SO_m.status == SOStatus.DELIVERED, *wh))
+            )
+        ).scalar_one()
+        delivered_on_time = (
+            await self.db.execute(
+                select(func.count(SO_m.id)).where(and_(
+                    SO_m.tenant_id == self.tenant_id, SO_m.status == SOStatus.DELIVERED,
+                    SO_m.requested_delivery_date.isnot(None),
+                    SO_m.delivered_date <= SO_m.requested_delivery_date, *wh))
+            )
+        ).scalar_one()
+        otd_pct = round(Decimal(delivered_on_time) / Decimal(delivered_total) * 100, 2) if delivered_total else None
+
+        fill = (
+            await self.db.execute(
+                select(
+                    func.coalesce(func.sum(SO_line.quantity_ordered), 0),
+                    func.coalesce(func.sum(SO_line.quantity_shipped), 0),
+                )
+                .select_from(SO_line).join(SO_m, SO_line.so_id == SO_m.id)
+                .where(and_(SO_m.tenant_id == self.tenant_id,
+                            SO_m.status.in_([SOStatus.SHIPPED, SOStatus.DELIVERED]), *wh))
+            )
+        ).one()
+        ordered_qty, shipped_qty = fill[0] or Decimal("0"), fill[1] or Decimal("0")
+        fill_rate_pct = round(Decimal(shipped_qty) / Decimal(ordered_qty) * 100, 2) if ordered_qty else None
+
         orders_overdue = await self.so_repo.get_overdue(warehouse_id)
         picks_today = await self.pick_repo.count_today()
         avg_pick_time = await self.pick_repo.get_avg_cycle_time()
@@ -630,10 +672,10 @@ class OutboundService:
             "waves_open": waves_open,
             "shipments_today": shipments_today,
             "shipments_in_transit": shipments_in_transit,
-            "on_time_delivery_pct": None,   # Futuro: basado en promised vs actual delivery
+            "on_time_delivery_pct": otd_pct,
             "short_pick_rate_pct": short_pick_rate,
             "rma_open": rma_open,
-            "order_fill_rate_pct": None,    # Futuro: qty_shipped / qty_ordered * 100
+            "order_fill_rate_pct": fill_rate_pct,
         }
 
     async def get_throughput_series(

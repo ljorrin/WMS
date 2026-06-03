@@ -293,19 +293,20 @@ class InventoryAdjustmentResponse(WMSSchema):
     warehouse_id: uuid.UUID
     adjustment_number: str
     reason: str
-    reason_code: str
+    reason_code: Optional[str] = None
     status: str    # draft | pending_approval | approved | rejected | applied
-    notes: Optional[str]
-    reference_number: Optional[str]
+    notes: Optional[str] = None
+    reference_number: Optional[str] = None
     lines: List[AdjustmentLineResponse] = []
-    total_lines: int
-    total_variance_value: Optional[Decimal]
-    created_by: uuid.UUID
-    approved_by: Optional[uuid.UUID]
-    applied_by: Optional[uuid.UUID]
+    total_lines: int = 0
+    total_variance_value: Optional[Decimal] = None
+    created_by_id: Optional[uuid.UUID] = None
+    approved_by: Optional[uuid.UUID] = None
+    applied_by: Optional[uuid.UUID] = None
     created_at: datetime
-    approved_at: Optional[datetime]
-    applied_at: Optional[datetime]
+    updated_at: datetime
+    approved_at: Optional[datetime] = None
+    applied_at: Optional[datetime] = None
 
 
 class AdjustmentApproveRequest(WMSSchema):
@@ -465,3 +466,22 @@ class MovementQueryParams(WMSSchema):
     date_from: Optional[datetime] = None
     date_to: Optional[datetime] = None
     user_id: Optional[uuid.UUID] = None
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# DASHBOARD / KPIs INVENTARIO
+# ══════════════════════════════════════════════════════════════════════════════
+
+class InventoryDashboardMetrics(WMSSchema):
+    """KPIs del módulo de inventario para el dashboard inicial."""
+    # Stock
+    distinct_skus: int
+    stock_positions: int
+    total_stock_value: Optional[Decimal] = None
+    # Calidad / vencimientos
+    near_expiry_batches: int
+    expired_batches: int
+    active_alerts: int
+    # Operación
+    pending_adjustments: int
+    movements_today: int

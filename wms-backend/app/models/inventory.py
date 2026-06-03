@@ -85,10 +85,11 @@ class ReservationType(str, PyEnum):
 
 
 class AdjustmentStatus(str, PyEnum):
-    PENDING   = "pending"    # Esperando aprobacion
-    APPROVED  = "approved"   # Aprobado
-    REJECTED  = "rejected"   # Rechazado
-    APPLIED   = "applied"    # Aplicado al inventario
+    DRAFT             = "draft"              # Borrador (recien creado)
+    PENDING_APPROVAL  = "pending_approval"  # Esperando aprobacion
+    APPROVED          = "approved"          # Aprobado
+    REJECTED          = "rejected"          # Rechazado
+    APPLIED           = "applied"           # Aplicado al inventario
 
 
 class CycleCountStatus(str, PyEnum):
@@ -743,15 +744,18 @@ class InventoryAdjustment(WMSTenantBase):
         ForeignKey("warehouses.id", ondelete="RESTRICT"),
         nullable=False
     )
-    location_id: Mapped[uuid.UUID] = mapped_column(
+    # Nota: el ajuste es cabecera + lineas (ver AdjustmentLine). Estas columnas
+    # de un solo SKU se conservan como opcionales para compatibilidad/atajos,
+    # pero el detalle real vive en las lineas.
+    location_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("locations.id", ondelete="RESTRICT"),
-        nullable=False
+        nullable=True
     )
-    product_id: Mapped[uuid.UUID] = mapped_column(
+    product_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("products.id", ondelete="RESTRICT"),
-        nullable=False
+        nullable=True
     )
     batch_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -764,13 +768,18 @@ class InventoryAdjustment(WMSTenantBase):
         String(100), nullable=False,
         comment="Razon del ajuste: cycle_count | damage | expiry | found | error | other"
     )
+    reason_code: Mapped[Optional[str]] = mapped_column(
+        String(50), comment="Codigo de razon: DAMAGE | EXPIRED | COUNT_ERROR | THEFT | etc."
+    )
     reason_detail: Mapped[Optional[str]] = mapped_column(Text)
+    reference_number: Mapped[Optional[str]] = mapped_column(String(50))
+    notes: Mapped[Optional[str]] = mapped_column(Text)
 
-    # Cantidades
-    quantity_before: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
-    quantity_after: Mapped[Decimal] = mapped_column(Numeric(15, 4), nullable=False)
-    quantity_delta: Mapped[Decimal] = mapped_column(
-        Numeric(15, 4), nullable=False,
+    # Cantidades (a nivel cabecera, opcionales — el detalle vive en lineas)
+    quantity_before: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 4))
+    quantity_after: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 4))
+    quantity_delta: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(15, 4),
         comment="quantity_after - quantity_before (puede ser negativo)"
     )
 
@@ -783,17 +792,18 @@ class InventoryAdjustment(WMSTenantBase):
 
     # Flujo de aprobacion
     status: Mapped[AdjustmentStatus] = mapped_column(
-        Enum(AdjustmentStatus), default=AdjustmentStatus.PENDING
+        Enum(AdjustmentStatus), default=AdjustmentStatus.DRAFT
     )
     required_approval_level: Mapped[str] = mapped_column(
         String(30), default="auto",
         comment="auto | supervisor | manager | director"
     )
-    requested_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True))
+    requested_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     approved_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     rejected_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     rejection_reason: Mapped[Optional[str]] = mapped_column(Text)
+    applied_by: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     applied_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     # Referencia a conteo ciclico si aplica
@@ -818,6 +828,17 @@ class InventoryAdjustment(WMSTenantBase):
         Index("ix_adjustments_warehouse_status", "warehouse_id", "status"),
         Index("ix_adjustments_tenant", "tenant_id"),
     )
+
+    @property
+    def total_lines(self) -> int:
+        """Numero de lineas del ajuste (requiere lines cargadas)."""
+        return len(self.lines)
+
+    @property
+    def total_variance_value(self) -> Optional[Decimal]:
+        """Valor economico total de la varianza (suma de las lineas)."""
+        costs = [l.total_variance_cost for l in self.lines if l.total_variance_cost is not None]
+        return sum(costs) if costs else None
 
 
 class AdjustmentLine(WMSTenantBase):

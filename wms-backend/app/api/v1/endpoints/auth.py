@@ -171,6 +171,17 @@ async def login(
             detail="Cuenta pendiente de activación. Revisa tu email.",
         )
 
+    # Segundo factor (MFA/TOTP) — solo si el usuario lo tiene activado (FR-001)
+    if getattr(user, "mfa_enabled", False):
+        import pyotp
+        if (not body.mfa_code or not user.mfa_secret
+                or not pyotp.TOTP(user.mfa_secret).verify(str(body.mfa_code), valid_window=1)):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Código MFA inválido o requerido.",
+                headers={"X-MFA-Required": "true"},
+            )
+
     # Reset de intentos fallidos + actualizar last_login
     user.failed_login_attempts = 0
     user.last_login_at = datetime.now(timezone.utc)
@@ -411,3 +422,63 @@ async def change_password(
     await db.commit()
 
     return MessageResponse(message="Contraseña actualizada exitosamente. Por favor inicia sesión nuevamente.")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MFA / 2FA (TOTP) — FR-001
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.post("/mfa/enroll", summary="Iniciar enrolamiento MFA (genera secreto TOTP)")
+async def mfa_enroll(current_user: CurrentUserDep, db: DBDep) -> dict:
+    """Genera (o regenera, si aún no está activado) el secreto TOTP del usuario
+    y devuelve la URI otpauth:// para configurar la app (Google Authenticator)."""
+    import pyotp
+
+    user = (await db.execute(select(User).where(User.id == current_user.id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+    if user.mfa_enabled:
+        raise HTTPException(status_code=409, detail="MFA ya está activado. Desactívalo antes de re-enrolar.")
+
+    secret = pyotp.random_base32()
+    user.mfa_secret = secret
+    await db.commit()
+
+    uri = pyotp.TOTP(secret).provisioning_uri(name=user.email, issuer_name="WMS Panamá")
+    return {"secret": secret, "otpauth_uri": uri,
+            "message": "Escanea el QR/URI en tu app TOTP y confirma con POST /auth/mfa/verify."}
+
+
+@router.post("/mfa/verify", summary="Confirmar y activar MFA")
+async def mfa_verify(payload: dict, current_user: CurrentUserDep, db: DBDep) -> dict:
+    """Verifica un código TOTP contra el secreto pendiente y activa MFA."""
+    import pyotp
+
+    code = str(payload.get("code", "")).strip()
+    user = (await db.execute(select(User).where(User.id == current_user.id))).scalar_one_or_none()
+    if not user or not user.mfa_secret:
+        raise HTTPException(status_code=400, detail="No hay enrolamiento MFA pendiente.")
+    if not code or not pyotp.TOTP(user.mfa_secret).verify(code, valid_window=1):
+        raise HTTPException(status_code=400, detail="Código MFA inválido.")
+    user.mfa_enabled = True
+    await _log_audit(db, AuditAction.UPDATE, user.id, user.tenant_id, "MFA activado")
+    await db.commit()
+    return {"mfa_enabled": True, "message": "MFA activado correctamente."}
+
+
+@router.post("/mfa/disable", summary="Desactivar MFA")
+async def mfa_disable(payload: dict, current_user: CurrentUserDep, db: DBDep) -> dict:
+    """Desactiva MFA validando un último código TOTP (o contraseña, según política)."""
+    import pyotp
+
+    code = str(payload.get("code", "")).strip()
+    user = (await db.execute(select(User).where(User.id == current_user.id))).scalar_one_or_none()
+    if not user or not user.mfa_enabled:
+        raise HTTPException(status_code=400, detail="MFA no está activado.")
+    if not code or not user.mfa_secret or not pyotp.TOTP(user.mfa_secret).verify(code, valid_window=1):
+        raise HTTPException(status_code=400, detail="Código MFA inválido.")
+    user.mfa_enabled = False
+    user.mfa_secret = None
+    await _log_audit(db, AuditAction.UPDATE, user.id, user.tenant_id, "MFA desactivado")
+    await db.commit()
+    return {"mfa_enabled": False, "message": "MFA desactivado."}

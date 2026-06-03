@@ -32,6 +32,8 @@ import app.models.core          # noqa: F401
 import app.models.master_data   # noqa: F401
 import app.models.inventory     # noqa: F401
 import app.models.inbound       # noqa: F401
+import app.models.outbound      # noqa: F401
+import app.models.ai            # noqa: F401
 
 target_metadata = WMSBase.metadata
 
