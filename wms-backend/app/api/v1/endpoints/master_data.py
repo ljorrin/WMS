@@ -457,3 +457,177 @@ async def update_location(location_id: uuid.UUID, payload: LocationUpdate, db: D
     await db.commit()
     await db.refresh(loc)
     return loc
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# CARGA MASIVA (proveedores/ubicaciones), DEDUPLICACIÓN y SLA (FR-014/015/013)
+# ══════════════════════════════════════════════════════════════════════════════
+
+class SupplierBulkImport(BaseModel):
+    dry_run: bool = True
+    rows: list[SupplierCreate] = Field(..., min_length=1, max_length=5000)
+
+
+class LocationBulkImport(BaseModel):
+    dry_run: bool = True
+    rows: list[LocationCreate] = Field(..., min_length=1, max_length=5000)
+
+
+@router.post(
+    "/suppliers/bulk-import", response_model=BulkImportResult,
+    summary="Carga masiva de proveedores (con dry-run)",
+    dependencies=[Depends(require_permission("master:supplier:manage"))],
+)
+async def bulk_import_suppliers(payload: SupplierBulkImport, db: DBDep, current_user: CurrentUserDep) -> BulkImportResult:
+    errors: list[dict] = []
+    seen: set[str] = set()
+    valid: list[SupplierCreate] = []
+    for i, row in enumerate(payload.rows, start=1):
+        if row.code in seen:
+            errors.append({"row": i, "code": row.code, "detail": "Código duplicado en el archivo."}); continue
+        seen.add(row.code)
+        if await _exists(db, Supplier, current_user.tenant_id, "code", row.code):
+            errors.append({"row": i, "code": row.code, "detail": "Código ya existe en la base de datos."}); continue
+        valid.append(row)
+    created = 0
+    if not payload.dry_run and valid:
+        for row in valid:
+            db.add(Supplier(id=uuid.uuid4(), tenant_id=current_user.tenant_id,
+                            created_by_id=current_user.id, **row.model_dump(exclude_none=True)))
+        await db.commit(); created = len(valid)
+    return BulkImportResult(total=len(payload.rows), valid=len(valid), invalid=len(errors),
+                            created=created, dry_run=payload.dry_run, errors=errors[:200])
+
+
+@router.post(
+    "/locations/bulk-import", response_model=BulkImportResult,
+    summary="Carga masiva de ubicaciones (con dry-run)",
+    dependencies=[Depends(require_permission("master:location:manage"))],
+)
+async def bulk_import_locations(payload: LocationBulkImport, db: DBDep, current_user: CurrentUserDep) -> BulkImportResult:
+    errors: list[dict] = []
+    seen: set[tuple] = set()
+    valid: list[LocationCreate] = []
+    for i, row in enumerate(payload.rows, start=1):
+        key = (str(row.warehouse_id), row.code)
+        if key in seen:
+            errors.append({"row": i, "code": row.code, "detail": "Ubicación duplicada en el archivo."}); continue
+        seen.add(key)
+        dup = (await db.execute(select(func.count()).select_from(Location).where(and_(
+            Location.tenant_id == current_user.tenant_id,
+            Location.warehouse_id == row.warehouse_id, Location.code == row.code)))).scalar_one()
+        if dup:
+            errors.append({"row": i, "code": row.code, "detail": "Ya existe en esa bodega."}); continue
+        valid.append(row)
+    created = 0
+    if not payload.dry_run and valid:
+        for row in valid:
+            db.add(Location(id=uuid.uuid4(), tenant_id=current_user.tenant_id,
+                            created_by_id=current_user.id, **row.model_dump(exclude_none=True)))
+        await db.commit(); created = len(valid)
+    return BulkImportResult(total=len(payload.rows), valid=len(valid), invalid=len(errors),
+                            created=created, dry_run=payload.dry_run, errors=errors[:200])
+
+
+@router.get(
+    "/products/duplicates", summary="Detectar posibles productos duplicados (FR-015)",
+    dependencies=[Depends(require_permission("master:product:read"))],
+)
+async def product_duplicates(db: DBDep, current_user: CurrentUserDep,
+                             threshold: float = Query(0.85, ge=0.5, le=1.0)) -> dict:
+    """Detecta duplicados por GTIN exacto y por similitud de nombre (difflib)."""
+    import difflib
+    rows = (await db.execute(
+        select(Product.id, Product.sku, Product.name, Product.gtin_13)
+        .where(Product.tenant_id == current_user.tenant_id).limit(500)
+    )).all()
+    groups: list[dict] = []
+    by_gtin: dict[str, list] = {}
+    for r in rows:
+        if r.gtin_13:
+            by_gtin.setdefault(r.gtin_13, []).append(r)
+    for gtin, members in by_gtin.items():
+        if len(members) > 1:
+            groups.append({"reason": "GTIN duplicado", "key": gtin,
+                           "items": [{"id": str(m.id), "sku": m.sku, "name": m.name} for m in members]})
+    names = [(r, (r.name or "").lower()) for r in rows]
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            ratio = difflib.SequenceMatcher(None, names[i][1], names[j][1]).ratio()
+            if ratio >= threshold:
+                a, b = names[i][0], names[j][0]
+                groups.append({"reason": f"Nombre similar ({ratio:.2f})",
+                               "items": [{"id": str(a.id), "sku": a.sku, "name": a.name},
+                                         {"id": str(b.id), "sku": b.sku, "name": b.name}]})
+    return {"groups": groups, "total": len(groups)}
+
+
+@router.get(
+    "/suppliers/duplicates", summary="Detectar posibles proveedores duplicados (FR-015)",
+    dependencies=[Depends(require_permission("master:supplier:manage"))],
+)
+async def supplier_duplicates(db: DBDep, current_user: CurrentUserDep,
+                              threshold: float = Query(0.85, ge=0.5, le=1.0)) -> dict:
+    import difflib
+    rows = (await db.execute(
+        select(Supplier.id, Supplier.code, Supplier.name, Supplier.ruc)
+        .where(Supplier.tenant_id == current_user.tenant_id).limit(500)
+    )).all()
+    groups: list[dict] = []
+    by_ruc: dict[str, list] = {}
+    for r in rows:
+        if r.ruc:
+            by_ruc.setdefault(r.ruc, []).append(r)
+    for ruc, members in by_ruc.items():
+        if len(members) > 1:
+            groups.append({"reason": "RUC duplicado", "key": ruc,
+                           "items": [{"id": str(m.id), "code": m.code, "name": m.name} for m in members]})
+    names = [(r, (r.name or "").lower()) for r in rows]
+    for i in range(len(names)):
+        for j in range(i + 1, len(names)):
+            ratio = difflib.SequenceMatcher(None, names[i][1], names[j][1]).ratio()
+            if ratio >= threshold:
+                a, b = names[i][0], names[j][0]
+                groups.append({"reason": f"Nombre similar ({ratio:.2f})",
+                               "items": [{"id": str(a.id), "code": a.code, "name": a.name},
+                                         {"id": str(b.id), "code": b.code, "name": b.name}]})
+    return {"groups": groups, "total": len(groups)}
+
+
+@router.get(
+    "/suppliers/{supplier_id}/sla", summary="SLA de cumplimiento del proveedor (FR-013)",
+    dependencies=[Depends(require_permission("master:supplier:manage"))],
+)
+async def supplier_sla(supplier_id: uuid.UUID, db: DBDep, current_user: CurrentUserDep) -> dict:
+    """Calcula el % de entregas a tiempo del proveedor (GRN.received_at <= OC.expected_delivery_date)
+    y alerta si el incumplimiento supera el 15% en las recepciones registradas."""
+    from sqlalchemy import case
+    from app.models.inbound import PurchaseOrder, GoodsReceipt
+
+    sup = (await db.execute(select(Supplier).where(and_(
+        Supplier.id == supplier_id, Supplier.tenant_id == current_user.tenant_id)))).scalar_one_or_none()
+    if not sup:
+        raise HTTPException(status_code=404, detail="Proveedor no encontrado.")
+
+    on_time_expr = func.sum(case((GoodsReceipt.received_at <= PurchaseOrder.expected_delivery_date, 1), else_=0))
+    row = (await db.execute(
+        select(func.count(GoodsReceipt.id), on_time_expr)
+        .select_from(GoodsReceipt)
+        .join(PurchaseOrder, GoodsReceipt.purchase_order_id == PurchaseOrder.id)
+        .where(and_(
+            GoodsReceipt.tenant_id == current_user.tenant_id,
+            GoodsReceipt.supplier_id == supplier_id,
+            PurchaseOrder.expected_delivery_date.isnot(None),
+        ))
+    )).one()
+    total = int(row[0] or 0)
+    on_time = int(row[1] or 0)
+    on_time_pct = round(on_time / total * 100, 2) if total else None
+    return {
+        "supplier_id": str(supplier_id), "code": sup.code, "name": sup.name,
+        "receipts_evaluated": total, "on_time": on_time,
+        "on_time_pct": on_time_pct,
+        "sla_target_pct": float(sup.sla_on_time_pct) if sup.sla_on_time_pct is not None else 85.0,
+        "breach": (on_time_pct is not None and on_time_pct < 85.0),
+        "is_blocked": bool(getattr(sup, "is_blocked", False)),
+    }

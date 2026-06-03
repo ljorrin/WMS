@@ -665,3 +665,52 @@ async def inventory_dashboard(
 ) -> InventoryDashboardMetrics:
     svc = get_inventory_service(current_user, db)
     return await svc.get_dashboard_metrics(warehouse_id=warehouse_id)
+
+
+# ── Propuestas de reposición (FR-046) ─────────────────────────────────────────
+@router.get(
+    "/reorder-proposals",
+    summary="Productos en/bajo punto de reorden con cantidad sugerida",
+    dependencies=[Depends(require_permission("inventory:read"))],
+)
+async def reorder_proposals(
+    current_user: CurrentUserDep,
+    db: DBDep,
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+) -> dict:
+    """Lista los SKUs cuyo stock disponible llegó al punto de reorden y propone
+    la cantidad a ordenar (reorder_quantity, o el déficit hasta 2× el punto)."""
+    from sqlalchemy import select, func, and_
+    from app.models.master_data import Product
+    from app.models.inventory import InventoryLevel
+
+    avail = func.coalesce(func.sum(InventoryLevel.quantity_available), 0)
+    join_cond = and_(
+        InventoryLevel.product_id == Product.id,
+        InventoryLevel.tenant_id == Product.tenant_id,
+    )
+    if warehouse_id is not None:
+        join_cond = and_(join_cond, InventoryLevel.warehouse_id == warehouse_id)
+
+    stmt = (
+        select(Product.id, Product.sku, Product.name, Product.reorder_point,
+               Product.reorder_quantity, avail.label("available"))
+        .select_from(Product)
+        .join(InventoryLevel, join_cond, isouter=True)
+        .where(and_(Product.tenant_id == current_user.tenant_id,
+                    Product.reorder_point.isnot(None), Product.reorder_point > 0))
+        .group_by(Product.id, Product.sku, Product.name, Product.reorder_point, Product.reorder_quantity)
+        .having(avail <= Product.reorder_point)
+        .order_by(Product.sku)
+    )
+    rows = (await db.execute(stmt)).all()
+    items = []
+    for r in rows:
+        available = float(r.available or 0)
+        rp = int(r.reorder_point or 0)
+        suggested = int(r.reorder_quantity) if r.reorder_quantity else max(rp * 2 - int(available), rp)
+        items.append({
+            "product_id": str(r.id), "sku": r.sku, "name": r.name,
+            "available": available, "reorder_point": rp, "suggested_quantity": suggested,
+        })
+    return {"items": items, "total": len(items)}

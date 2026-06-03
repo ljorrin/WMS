@@ -146,9 +146,13 @@ class InventoryLevelRepository:
         product_id: uuid.UUID,
         quantity_needed: Decimal,
         location_id: Optional[uuid.UUID] = None,
+        strategy: str = "FEFO",
     ) -> List[dict]:
         """
-        FEFO: Selecciona lotes ordenados por fecha de vencimiento (más próximo primero).
+        Selecciona lotes según la estrategia de rotación (FR-043):
+          - FEFO: vencimiento más próximo primero (default; NULL al final).
+          - FIFO: el más antiguo recibido primero.
+          - LIFO: el más reciente recibido primero.
         Retorna lista de {level, batch, quantity_to_use} hasta cubrir quantity_needed.
         Este es el algoritmo crítico del WMS.
         """
@@ -167,15 +171,29 @@ class InventoryLevelRepository:
         if location_id:
             stmt = stmt.where(InventoryLevel.location_id == location_id)
 
-        # FEFO: los que vencen primero primero. NULL expiry va al final.
-        stmt = stmt.order_by(
-            case(
-                (Batch.expiry_date.is_(None), 1),
-                else_=0,
-            ),
-            Batch.expiry_date.asc().nullslast(),
-            InventoryLevel.updated_at.asc(),  # FIFO como desempate
-        )
+        strat = (strategy or "FEFO").upper()
+        if strat == "LIFO":
+            # Último en entrar, primero en salir: lote recibido más recientemente.
+            stmt = stmt.order_by(
+                Batch.received_date.desc().nullslast(),
+                InventoryLevel.created_at.desc(),
+            )
+        elif strat == "FIFO":
+            # Primero en entrar, primero en salir.
+            stmt = stmt.order_by(
+                Batch.received_date.asc().nullslast(),
+                InventoryLevel.created_at.asc(),
+            )
+        else:
+            # FEFO (default): los que vencen primero primero. NULL expiry va al final.
+            stmt = stmt.order_by(
+                case(
+                    (Batch.expiry_date.is_(None), 1),
+                    else_=0,
+                ),
+                Batch.expiry_date.asc().nullslast(),
+                InventoryLevel.updated_at.asc(),  # FIFO como desempate
+            )
 
         results = (await self.db.execute(stmt)).all()
 

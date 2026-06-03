@@ -423,6 +423,11 @@ class OutboundService:
                 f"La tarea de empaque debe estar IN_PROGRESS. Estado: {task.status}"
             )
 
+        # Generar SSCC GS1 único si el operario no lo capturó (FR-056)
+        if not sscc:
+            from app.core.gs1 import generate_sscc
+            sscc = generate_sscc(company_prefix="0000000")
+
         await self.pack_repo.complete(
             task_id=task_id,
             box_type=box_type,

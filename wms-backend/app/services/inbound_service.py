@@ -441,6 +441,26 @@ class InboundService:
     # PUTAWAY
     # ══════════════════════════════════════════════════════════════════════════
 
+    async def _suggest_location(self, warehouse_id: UUID, quarantine: bool = False):
+        """Regla de slotting simple (FR-030/032): primera ubicación ACTIVA del tipo
+        adecuado en la bodega, por secuencia de picking. Cuarentena para rechazos."""
+        from sqlalchemy import select, and_
+        from app.models.master_data import Location, LocationType, LocationStatus
+
+        types = [LocationType.QUARANTINE] if quarantine else [LocationType.STANDARD, LocationType.BULK]
+        stmt = (
+            select(Location.id)
+            .where(and_(
+                Location.tenant_id == self.tenant_id,
+                Location.warehouse_id == warehouse_id,
+                Location.status == LocationStatus.ACTIVE,
+                Location.location_type.in_(types),
+            ))
+            .order_by(Location.pick_sequence.asc().nullslast(), Location.code.asc())
+            .limit(1)
+        )
+        return (await self.db.execute(stmt)).scalar_one_or_none()
+
     async def _generate_putaway_tasks(self, grn) -> List:
         """
         Genera PutawayTasks para cada línea aprobada del GRN.
@@ -452,22 +472,30 @@ class InboundService:
         """
         tasks_data = []
         for line in grn.lines:
-            if getattr(line, "status", "approved") != "rejected":
-                qty = line.quantity_received - line.quantity_rejected
-                if qty > 0:
-                    tasks_data.append(
-                        dict(
-                            warehouse_id=grn.warehouse_id,
-                            grn_id=grn.id,
-                            grn_line_id=line.id,
-                            product_id=line.product_id,
-                            uom=getattr(line, "uom", "UN"),
-                            quantity=qty,
-                            from_location_id=line.location_id,
-                            suggested_location_id=None,  # Putaway Rules futuras
-                            priority=5,
-                        )
-                    )
+            status = getattr(line, "status", "approved")
+            received = line.quantity_received or Decimal("0")
+            rejected = line.quantity_rejected or Decimal("0")
+            base = dict(
+                warehouse_id=grn.warehouse_id, grn_id=grn.id, grn_line_id=line.id,
+                product_id=line.product_id, uom=getattr(line, "uom", "UN"),
+                from_location_id=line.location_id,
+            )
+            if status == "rejected":
+                # Línea rechazada completa → cuarentena (FR-032)
+                if received > 0:
+                    qloc = await self._suggest_location(grn.warehouse_id, quarantine=True)
+                    tasks_data.append(dict(base, quantity=received, suggested_location_id=qloc,
+                                           priority=8, notes="Rechazado en QC → cuarentena"))
+                continue
+            net = received - rejected
+            if net > 0:
+                # Ubicación sugerida por reglas de slotting (FR-030)
+                suggested = await self._suggest_location(grn.warehouse_id)
+                tasks_data.append(dict(base, quantity=net, suggested_location_id=suggested, priority=5))
+            if rejected > 0:
+                qloc = await self._suggest_location(grn.warehouse_id, quarantine=True)
+                tasks_data.append(dict(base, quantity=rejected, suggested_location_id=qloc,
+                                       priority=8, notes="Cantidad rechazada → cuarentena"))
 
         tasks = await self.putaway_repo.create_bulk(tasks_data)
         log.info("putaway.tasks_created", count=len(tasks), grn_id=str(grn.id))

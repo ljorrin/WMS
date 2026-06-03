@@ -283,6 +283,10 @@ class InventoryService:
         Aplica FEFO/FIFO automáticamente según la estrategia.
         Retorna lista de picks con ubicación, lote y cantidad.
         """
+        # Estrategia de rotación: la del producto si está definida, si no el parámetro (FR-043)
+        prod = await self.db.get(Product, product_id)
+        strat = getattr(getattr(prod, "rotation_strategy", None), "value", None) or strategy
+
         # Seleccionar lotes según estrategia
         allocation = await self.levels.get_available_batches_fefo(
             tenant_id=self.tenant_id,
@@ -290,6 +294,7 @@ class InventoryService:
             product_id=product_id,
             quantity_needed=quantity,
             location_id=force_location_id,
+            strategy=strat,
         )
 
         # Verificar que haya stock suficiente
@@ -870,6 +875,27 @@ class InventoryService:
             await self.db.execute(select(func.count(InventoryMovement.id)).where(and_(*mov_filters)))
         ).scalar_one()
 
+        # Utilización de infraestructura (FR-073): ocupación de ubicaciones
+        from app.models.master_data import Location, LocationStatus
+        loc_filters = [Location.tenant_id == self.tenant_id, Location.status == LocationStatus.ACTIVE]
+        if warehouse_id is not None:
+            loc_filters.append(Location.warehouse_id == warehouse_id)
+        locations_total = (
+            await self.db.execute(select(func.count(Location.id)).where(and_(*loc_filters)))
+        ).scalar_one()
+        occ_filters = [InventoryLevel.tenant_id == self.tenant_id, InventoryLevel.quantity_on_hand > 0]
+        if warehouse_id is not None:
+            occ_filters.append(InventoryLevel.warehouse_id == warehouse_id)
+        locations_occupied = (
+            await self.db.execute(
+                select(func.count(func.distinct(InventoryLevel.location_id))).where(and_(*occ_filters))
+            )
+        ).scalar_one()
+        occupancy_pct = (
+            round(Decimal(locations_occupied) / Decimal(locations_total) * 100, 2)
+            if locations_total else None
+        )
+
         return {
             "distinct_skus": distinct_skus,
             "stock_positions": stock_positions,
@@ -879,4 +905,7 @@ class InventoryService:
             "active_alerts": active_alerts,
             "pending_adjustments": pending_adjustments,
             "movements_today": movements_today,
+            "locations_total": locations_total,
+            "locations_occupied": locations_occupied,
+            "occupancy_pct": occupancy_pct,
         }

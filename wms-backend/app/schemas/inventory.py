@@ -485,3 +485,7 @@ class InventoryDashboardMetrics(WMSSchema):
     # Operación
     pending_adjustments: int
     movements_today: int
+    # Utilización de infraestructura (FR-073)
+    locations_total: int = 0
+    locations_occupied: int = 0
+    occupancy_pct: Optional[Decimal] = None
