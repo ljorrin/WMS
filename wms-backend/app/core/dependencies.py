@@ -136,9 +136,21 @@ async def get_current_user(
     Obtiene el usuario activo desde la BD.
     Verifica que exista y no esté bloqueado/inactivo.
     """
-    from app.models.core import User, UserStatus
+    from app.models.core import User, UserStatus, UserRole, Role, RolePermission
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
 
-    user = await db.get(User, token_data.user_id)
+    stmt = (
+        select(User)
+        .where(User.id == token_data.user_id)
+        .options(
+            selectinload(User.user_roles)
+            .selectinload(UserRole.role)
+            .selectinload(Role.permissions)
+            .selectinload(RolePermission.permission)
+        )
+    )
+    user = (await db.execute(stmt)).scalar_one_or_none()
 
     if not user:
         raise HTTPException(
