@@ -7,7 +7,7 @@ Prefijo: /api/v1
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, health, tenants, users, warehouses, master_data, inventory, inbound, outbound, ai, realtime, integrations
+from app.api.v1.endpoints import auth, health, tenants, users, warehouses, master_data, inventory, inbound, outbound, ai, realtime, integrations, sync, yms
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -32,3 +32,9 @@ api_router.include_router(realtime.router,  tags=["📡 Realtime"])
 
 # ── Integraciones (ERP, eCommerce, transporte, regulatorio Panamá) ───────────
 api_router.include_router(integrations.router, prefix="/integrations", tags=["🔌 Integraciones"])
+
+# ── Sincronización offline (RF/móvil) ────────────────────────────────────────
+api_router.include_router(sync.router, prefix="/sync", tags=["🔄 Sync Offline"])
+
+# ── YMS (Yard Management) ────────────────────────────────────────────────────
+api_router.include_router(yms.router, prefix="/yms", tags=["🚧 YMS"])

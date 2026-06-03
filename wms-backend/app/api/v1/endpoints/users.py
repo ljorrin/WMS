@@ -187,3 +187,72 @@ async def deactivate_user(
 
     user.status = UserStatus.INACTIVE
     await db.commit()
+
+
+@router.post("/{user_id}/anonymize", status_code=status.HTTP_200_OK)
+async def anonymize_user(
+    user_id: uuid.UUID,
+    db: DBDep,
+    superadmin: SuperAdminDep,
+) -> dict:
+    """Anonimiza los datos personales de un usuario conforme a la Ley 81 de 2019
+    (derecho al olvido). Reemplaza PII por valores no identificables y desactiva
+    la cuenta; conserva el id para integridad referencial de la auditoría."""
+    user = await db.get(User, user_id)
+    if not user or user.tenant_id != superadmin.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuario no encontrado.")
+    if user.id == superadmin.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="No puedes anonimizar tu propia cuenta.")
+
+    token = uuid.uuid4().hex[:12]
+    user.first_name = "ANONIMIZADO"
+    user.last_name = "ANONIMIZADO"
+    user.email = f"anon-{token}@anonimizado.local"
+    user.username = f"anon-{token}"
+    user.phone = None
+    user.avatar_url = None
+    user.hashed_password = None
+    user.mfa_enabled = False
+    user.mfa_secret = None
+    user.rf_pin = None
+    user.status = UserStatus.INACTIVE
+    await db.commit()
+    return {"user_id": str(user_id), "anonymized": True,
+            "message": "Datos personales anonimizados (Ley 81 de 2019)."}
+
+
+# ── Ley 81 de 2019 — Derecho al olvido / anonimización (REG-006) ─────────────
+@router.post("/{user_id}/anonymize", summary="Anonimizar datos personales (Ley 81)")
+async def anonymize_user(
+    user_id: uuid.UUID,
+    superadmin: SuperAdminDep,
+    db: DBDep,
+) -> dict:
+    """Anonimiza de forma irreversible los datos personales del usuario conforme
+    a la Ley 81 de 2019 (derecho al olvido). Conserva id/tenant para integridad
+    referencial e historial, pero elimina toda PII y deshabilita el acceso."""
+    from datetime import datetime, timezone
+
+    user = (await db.execute(select(User).where(
+        User.id == user_id, User.tenant_id == superadmin.tenant_id))).scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado.")
+
+    anon = uuid.uuid4().hex[:12]
+    user.email = f"anon+{anon}@anonimizado.local"
+    user.username = f"anon_{anon}"
+    user.first_name = "ANONIMIZADO"
+    user.last_name = "ANONIMIZADO"
+    for attr in ("phone", "avatar_url", "rf_pin", "employee_id", "hashed_password",
+                 "mfa_secret", "last_login_ip", "keycloak_id"):
+        if hasattr(user, attr):
+            setattr(user, attr, None)
+    if hasattr(user, "mfa_enabled"):
+        user.mfa_enabled = False
+    user.status = UserStatus.INACTIVE
+    user.deleted_at = datetime.now(timezone.utc)
+    user.deleted_by = superadmin.id
+    await db.commit()
+    return {"anonymized": True, "user_id": str(user_id),
+            "message": "Datos personales anonimizados conforme a la Ley 81 de 2019."}

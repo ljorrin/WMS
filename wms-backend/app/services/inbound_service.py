@@ -339,6 +339,19 @@ class InboundService:
             await self._generate_putaway_tasks(grn)
             await self.grn_repo.update_status(grn_id, GRNStatus.PUTAWAY_IN_PROGRESS)
 
+        # Notificar la recepción al ERP (best-effort; no rompe el flujo si no está configurado)
+        try:
+            from app.integrations import erp
+            await erp.push_goods_receipt({
+                "grn_number": getattr(grn, "grn_number", None),
+                "grn_id": str(grn_id),
+                "warehouse_id": str(grn.warehouse_id),
+                "purchase_order_id": str(getattr(grn, "purchase_order_id", "") or ""),
+                "received_at": getattr(grn, "received_at", None).isoformat() if getattr(grn, "received_at", None) else None,
+            })
+        except Exception as e:  # nunca bloquear la confirmación por la integración
+            log.warning("erp.push_grn_failed", grn_id=str(grn_id), error=str(e))
+
         log.info("grn.confirmed", grn_id=str(grn_id), requires_qc=grn.requires_qc)
 
     # ══════════════════════════════════════════════════════════════════════════

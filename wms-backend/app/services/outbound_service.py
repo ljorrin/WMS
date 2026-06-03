@@ -280,11 +280,41 @@ class OutboundService:
                     if qty <= 0:
                         break
 
+        # Aplicar la modalidad de picking de la wave (FR-051/052/054)
+        method = getattr(getattr(wave, "picking_method", None), "value", None) or "discrete"
+        tasks_data = self._apply_picking_method(tasks_data, method)
+
         tasks = await self.pick_repo.create_bulk(tasks_data)
         await self.wave_repo.release(wave_id)
 
-        log.info("wave.released", wave_id=str(wave_id), tasks=len(tasks))
+        log.info("wave.released", wave_id=str(wave_id), tasks=len(tasks), method=method)
         return tasks
+
+    @staticmethod
+    def _apply_picking_method(tasks_data: list[dict], method: str) -> list[dict]:
+        """Ajusta las tareas según la modalidad (puro código, FR-051/052/054):
+          - zone: ordena/secuencia por ubicación de origen (recorrido por zona).
+          - batch: marca consolidación (varias órdenes en un recorrido).
+          - cluster: asigna un índice de contenedor por orden de venta.
+          - discrete: 1 orden = 1 recorrido (default).
+        """
+        m = (method or "discrete").lower()
+        if not tasks_data:
+            return tasks_data
+        if m == "zone":
+            tasks_data.sort(key=lambda t: str(t.get("from_location_id") or ""))
+            for seq, t in enumerate(tasks_data, start=1):
+                t["priority"] = seq
+                t["notes"] = f"ZONE · secuencia {seq}"
+        elif m == "batch":
+            so_ids = sorted({str(t.get("so_id")) for t in tasks_data})
+            for t in tasks_data:
+                t["notes"] = f"BATCH · {len(so_ids)} órdenes (consolidar en sorting)"
+        elif m == "cluster":
+            cluster_index = {soid: i + 1 for i, soid in enumerate(sorted({str(t.get('so_id')) for t in tasks_data}))}
+            for t in tasks_data:
+                t["notes"] = f"CLUSTER · contenedor {cluster_index[str(t.get('so_id'))]}"
+        return tasks_data
 
     # ══════════════════════════════════════════════════════════════════════════
     # PICKING TASKS
@@ -481,6 +511,19 @@ class OutboundService:
                     await self.so_repo.update_line_quantities(
                         line.id, "quantity_shipped", line.quantity_picked
                     )
+
+        # Notificar el despacho al ERP (best-effort; no rompe el flujo)
+        try:
+            from app.integrations import erp
+            await erp.push_shipment({
+                "shipment_number": getattr(shipment, "shipment_number", None),
+                "shipment_id": str(shipment_id),
+                "so_id": str(shipment.so_id),
+                "carrier_name": getattr(shipment, "carrier_name", None),
+                "tracking_number": getattr(shipment, "tracking_number", None),
+            })
+        except Exception as e:
+            log.warning("erp.push_shipment_failed", shipment_id=str(shipment_id), error=str(e))
 
         log.info("shipment.dispatched", shipment_id=str(shipment_id))
 

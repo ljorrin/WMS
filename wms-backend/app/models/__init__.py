@@ -19,6 +19,7 @@ from app.models.ai import (
     DemandForecast, ReplenishmentAlert, PickingRouteOptimization,
     AnomalyEvent, AIConversation, AIConversationMessage,
 )
+from app.models.yms import Dock, YardAppointment
 
 __all__ = [
     "WMSBase", "WMSTenantBase",
