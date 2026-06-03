@@ -68,7 +68,7 @@ class TestUtilities:
     def test_generate_api_key_format(self):
         key = generate_api_key("wms")
         assert key.startswith("wms_")
-        assert len(key) == 4 + 1 + 64  # "wms_" + 32 bytes hex = 68 chars
+        assert len(key) == 4 + 64  # "wms_" (4) + 32 bytes hex (64) = 68 chars
 
     def test_mask_sensitive(self):
         assert mask_sensitive("mypassword123", visible_chars=3) == "**********123"
