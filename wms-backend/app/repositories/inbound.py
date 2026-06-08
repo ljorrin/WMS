@@ -116,8 +116,10 @@ class PurchaseOrderRepository:
         return po
 
     async def get_by_id(self, po_id: UUID) -> Optional[PurchaseOrder]:
+        from app.models.master_data import Supplier
         result = await self.db.execute(
-            select(PurchaseOrder)
+            select(PurchaseOrder, Supplier.name.label("supplier_name"))
+            .join(Supplier, PurchaseOrder.supplier_id == Supplier.id)
             .options(
                 selectinload(PurchaseOrder.lines),
                 selectinload(PurchaseOrder.status_history),
@@ -130,7 +132,13 @@ class PurchaseOrderRepository:
                 )
             )
         )
-        return result.scalar_one_or_none()
+        row = result.first()
+        if not row:
+            return None
+            
+        po = row.PurchaseOrder
+        po.supplier_name = row.supplier_name
+        return po
 
     async def list(
         self,
@@ -170,16 +178,31 @@ class PurchaseOrderRepository:
         count_q = select(func.count(PurchaseOrder.id)).where(and_(*filters))
         total = (await self.db.execute(count_q)).scalar_one()
 
+        from app.models.master_data import Supplier
         q = (
-            select(PurchaseOrder)
-            .options(selectinload(PurchaseOrder.lines))
+            select(
+                PurchaseOrder,
+                Supplier.name.label("supplier_name")
+            )
+            .join(Supplier, PurchaseOrder.supplier_id == Supplier.id)
+            .options(
+                selectinload(PurchaseOrder.lines),
+                selectinload(PurchaseOrder.status_history),
+            )
             .where(and_(*filters))
             .order_by(PurchaseOrder.created_at.desc())
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
-        rows = (await self.db.execute(q)).scalars().all()
-        return list(rows), total
+        rows = (await self.db.execute(q)).all()
+        
+        items = []
+        for row in rows:
+            po = row.PurchaseOrder
+            po.supplier_name = row.supplier_name
+            items.append(po)
+            
+        return items, total
 
     async def update_fields(self, po_id: UUID, fields: dict) -> None:
         """Actualiza campos de cabecera de una OC (edición)."""
@@ -653,13 +676,15 @@ class QualityInspectionRepository:
             )
         )
 
-    async def list_pending(
-        self, warehouse_id: Optional[UUID] = None, page: int = 1, page_size: int = 50
+    async def list(
+        self, warehouse_id: Optional[UUID] = None, status: Optional[str] = None, page: int = 1, page_size: int = 50
     ) -> tuple[List[QualityInspection], int]:
-        filters = [
-            QualityInspection.tenant_id == self.tenant_id,
-            QualityInspection.status.in_([QCStatus.PENDING, QCStatus.IN_PROGRESS]),
-        ]
+        filters = [QualityInspection.tenant_id == self.tenant_id]
+        if warehouse_id:
+            filters.append(QualityInspection.warehouse_id == warehouse_id)
+        if status:
+            filters.append(QualityInspection.status == status)
+
         total = (
             await self.db.execute(
                 select(func.count(QualityInspection.id)).where(and_(*filters))
@@ -737,21 +762,48 @@ class PutawayTaskRepository:
         if assigned_to_id:
             filters.append(PutawayTask.assigned_to_id == assigned_to_id)
 
+        from app.models.master_data import Product, Location
+        from sqlalchemy.orm import aliased
+        
+        LocFrom = aliased(Location)
+        LocSug = aliased(Location)
+        LocAct = aliased(Location)
+
         total = (
             await self.db.execute(
                 select(func.count(PutawayTask.id)).where(and_(*filters))
             )
         ).scalar_one()
-        rows = (
+        result = (
             await self.db.execute(
-                select(PutawayTask)
+                select(
+                    PutawayTask,
+                    Product.name.label("product_name"),
+                    LocFrom.code.label("from_location_code"),
+                    LocSug.code.label("suggested_location_code"),
+                    LocAct.code.label("actual_location_code"),
+                )
+                .join(Product, PutawayTask.product_id == Product.id)
+                .outerjoin(LocFrom, PutawayTask.from_location_id == LocFrom.id)
+                .outerjoin(LocSug, PutawayTask.suggested_location_id == LocSug.id)
+                .outerjoin(LocAct, PutawayTask.actual_location_id == LocAct.id)
                 .where(and_(*filters))
                 .order_by(PutawayTask.priority.desc(), PutawayTask.created_at.asc())
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             )
-        ).scalars().all()
-        return list(rows), total
+        ).all()
+        
+        tasks = []
+        for row in result:
+            task = row.PutawayTask
+            task.product_name = row.product_name
+            task.from_location_code = row.from_location_code
+            task.suggested_location_code = row.suggested_location_code
+            task.actual_location_code = row.actual_location_code
+            tasks.append(task)
+            
+        return tasks, total
 
     async def start_task(self, task_id: UUID, operator_id: UUID) -> None:
         await self.db.execute(

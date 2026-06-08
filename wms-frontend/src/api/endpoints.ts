@@ -104,14 +104,14 @@ export const inventoryApi = {
   applyAdjustment: (id: string) =>
     api.post(`/inventory/adjustments/${id}/apply`).then(r => r.data),
 
-  getNearExpiry: (warehouseId: string, daysAhead = 30) =>
+  getNearExpiry: (warehouseId: string, daysAhead = 30, page = 1, pageSize = 25) =>
     api.get<BatchListResponse>('/inventory/batches/near-expiry', {
-      params: { warehouse_id: warehouseId, days_ahead: daysAhead },
+      params: { warehouse_id: warehouseId, days_ahead: daysAhead, page, page_size: pageSize },
     }).then(r => r.data),
 
-  getExpired: (warehouseId: string) =>
+  getExpired: (warehouseId: string, page = 1, pageSize = 25) =>
     api.get<BatchListResponse>('/inventory/batches/expired', {
-      params: { warehouse_id: warehouseId },
+      params: { warehouse_id: warehouseId, page, page_size: pageSize },
     }).then(r => r.data),
 
   getDashboard: (warehouseId?: string) =>
@@ -174,8 +174,8 @@ export const inboundApi = {
   startPutaway: (id: string) =>
     api.post(`/inbound/putaway/${id}/start`).then(r => r.data),
 
-  completePutaway: (id: string, actual_location_id: string, override_reason?: string) =>
-    api.post(`/inbound/putaway/${id}/complete`, { actual_location_id, override_reason }).then(r => r.data),
+  completePutaway: (id: string, actual_location: string, override_reason?: string) =>
+    api.post(`/inbound/putaway/${id}/complete`, { actual_location, override_reason }).then(r => r.data),
 
   // Dashboard
   getDashboard: (warehouseId?: string) =>

@@ -101,8 +101,7 @@ async def create_purchase_order(
         **data,
     )
     await db.commit()
-    await db.refresh(po)
-    return po
+    return await svc.po_repo.get_by_id(po.id)
 
 
 @router.get(
@@ -194,7 +193,7 @@ async def update_purchase_order(
     try:
         po = await svc.update_purchase_order(po_id, payload.model_dump(exclude_unset=True))
         await db.commit()
-        return po
+        return await svc.po_repo.get_by_id(po.id)
     except POStateError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except InboundServiceError as e:
@@ -271,8 +270,7 @@ async def create_asn(
             **data,
         )
         await db.commit()
-        await db.refresh(asn)
-        return asn
+        return await svc.asn_repo.get_by_id(asn.id)
     except InboundServiceError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -382,8 +380,7 @@ async def create_grn(
             **data,
         )
         await db.commit()
-        await db.refresh(grn)
-        return grn
+        return await svc.grn_repo.get_by_id(grn.id)
     except InboundServiceError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -478,8 +475,7 @@ async def create_quality_inspection(
             **data,
         )
         await db.commit()
-        await db.refresh(qi)
-        return qi
+        return await svc.qi_repo.get_by_id(qi.id)
     except InboundServiceError as e:
         raise HTTPException(status_code=409, detail=str(e))
 
@@ -495,7 +491,7 @@ async def list_quality_inspections(
     pagination: PaginationDep,
 ):
     svc = _svc(db, current_user)
-    items, total = await svc.qi_repo.list_pending(
+    items, total = await svc.qi_repo.list(
         page=pagination.page,
         page_size=pagination.page_size,
     )
@@ -621,7 +617,7 @@ async def complete_putaway_task(
     try:
         await svc.complete_putaway_task(
             task_id=task_id,
-            actual_location_id=payload.actual_location_id,
+            actual_location=payload.actual_location,
             override_reason=payload.override_reason,
         )
         await db.commit()
@@ -650,8 +646,7 @@ async def create_rtv(payload: RTVCreate, db: DBDep, current_user: CurrentUserDep
         **data,
     )
     await db.commit()
-    await db.refresh(rtv)
-    return rtv
+    return await svc.rtv_repo.get_by_id(rtv.id)
 
 
 @router.get(

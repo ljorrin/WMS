@@ -90,6 +90,7 @@ export function PackingPage() {
           <Thead>
             <Tr>
               <Th>Número</Th>
+              <Th>Orden</Th>
               <Th>Estado</Th>
               <Th>Tipo caja</Th>
               <Th>Cajas</Th>
@@ -114,6 +115,12 @@ export function PackingPage() {
               data.items.map(t => (
                 <Tr key={t.id}>
                   <Td><span className="font-mono font-medium text-primary-700">{t.pack_task_number}</span></Td>
+                  <Td>
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-gray-900">{t.so_number ?? 'Orden Desconocida'}</span>
+                      <span className="text-gray-400 text-xs font-mono">{t.assigned_to_name ?? 'Sin asignar'}</span>
+                    </div>
+                  </Td>
                   <Td><Badge status={t.status} /></Td>
                   <Td className="text-xs text-gray-500 capitalize">{t.box_type?.replace(/_/g, ' ') ?? '—'}</Td>
                   <Td className="text-center">{t.box_count}</Td>

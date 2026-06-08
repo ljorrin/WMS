@@ -487,7 +487,7 @@ class InboundService:
     async def complete_putaway_task(
         self,
         task_id: UUID,
-        actual_location_id: UUID,
+        actual_location: str,
         override_reason: Optional[str] = None,
     ) -> None:
         """
@@ -503,6 +503,20 @@ class InboundService:
             raise PutawayStateError(
                 f"La tarea debe estar IN_PROGRESS. Estado: {task.status}"
             )
+
+        # Resolver actual_location a UUID
+        try:
+            actual_location_id = UUID(actual_location)
+        except ValueError:
+            from sqlalchemy import select
+            from app.models.master_data import Location
+            stmt = select(Location.id).where(
+                Location.tenant_id == self.tenant_id,
+                Location.code == actual_location
+            )
+            actual_location_id = (await self.db.execute(stmt)).scalar_one_or_none()
+            if not actual_location_id:
+                raise InboundServiceError(f"Ubicación con código {actual_location} no encontrada.")
 
         # Validar override_reason si la ubicación difiere de la sugerida
         if (

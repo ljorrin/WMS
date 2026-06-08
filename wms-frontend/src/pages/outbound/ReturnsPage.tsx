@@ -108,6 +108,7 @@ export function ReturnsPage() {
           <Thead>
             <Tr>
               <Th>Número</Th>
+              <Th>Orden / Cliente</Th>
               <Th>Estado</Th>
               <Th>Tipo</Th>
               <Th>Motivo</Th>
@@ -131,6 +132,12 @@ export function ReturnsPage() {
               data.items.map(r => (
                 <Tr key={r.id}>
                   <Td><span className="font-mono font-medium text-primary-700">{r.rma_number}</span></Td>
+                  <Td>
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-gray-900">{r.so_number ?? '—'}</span>
+                      <span className="text-gray-500 text-xs">{r.customer_name ?? '—'}</span>
+                    </div>
+                  </Td>
                   <Td><Badge status={r.status} /></Td>
                   <Td className="text-xs text-gray-500 capitalize">{r.return_type}</Td>
                   <Td className="text-gray-600 text-sm max-w-xs truncate">{r.reason}</Td>

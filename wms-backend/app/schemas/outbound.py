@@ -227,6 +227,10 @@ class PickingTaskResponse(BaseModel):
     cycle_time_seconds: Optional[int]
     short_reason: Optional[str]
     notes: Optional[str]
+    product_name: Optional[str] = None
+    from_location_code: Optional[str] = None
+    to_location_code: Optional[str] = None
+    assigned_to_name: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
@@ -278,6 +282,8 @@ class PackTaskResponse(BaseModel):
     label_printed: bool
     packing_list_printed: bool
     notes: Optional[str]
+    so_number: Optional[str] = None
+    assigned_to_name: Optional[str] = None
     created_by_id: UUID
     created_at: datetime
     updated_at: datetime
@@ -349,6 +355,8 @@ class ShipmentResponse(BaseModel):
     delivered_to_name: Optional[str]
     erp_synced_at: Optional[datetime]
     notes: Optional[str]
+    so_number: Optional[str] = None
+    customer_name: Optional[str] = None
     created_by_id: UUID
     created_at: datetime
     updated_at: datetime
@@ -410,6 +418,8 @@ class ReturnOrderResponse(BaseModel):
     refund_issued_at: Optional[datetime]
     credit_memo_number: Optional[str]
     notes: Optional[str]
+    so_number: Optional[str] = None
+    customer_name: Optional[str] = None
     created_by_id: UUID
     created_at: datetime
     updated_at: datetime

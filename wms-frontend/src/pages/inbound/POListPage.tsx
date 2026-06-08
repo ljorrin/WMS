@@ -97,7 +97,7 @@ export function POListPage() {
                     </button>
                   </Td>
                   <Td><Badge status={po.status} /></Td>
-                  <Td className="text-gray-600">{po.supplier_id}</Td>
+                  <Td className="text-gray-600">{po.supplier_name ?? po.supplier_id}</Td>
                   <Td>{fmt.date(po.order_date)}</Td>
                   <Td>
                     {po.expected_delivery_date ? (
