@@ -115,6 +115,7 @@ class PurchaseOrderResponse(BaseModel):
     tenant_id: UUID
     warehouse_id: UUID
     supplier_id: UUID
+    supplier_name: Optional[str] = None
     po_number: str
     supplier_po_reference: Optional[str] = None
     status: POStatus
@@ -447,12 +448,16 @@ class PutawayTaskResponse(BaseModel):
     grn_id: Optional[UUID] = None
     grn_line_id: Optional[UUID] = None
     product_id: UUID
+    product_name: Optional[str] = None
     batch_id: Optional[UUID] = None
     quantity: Decimal
     uom: Optional[str] = None
     from_location_id: Optional[UUID] = None
+    from_location_code: Optional[str] = None
     suggested_location_id: Optional[UUID] = None
+    suggested_location_code: Optional[str] = None
     actual_location_id: Optional[UUID] = None
+    actual_location_code: Optional[str] = None
     status: PutawayStatus
     priority: int
     assigned_to_id: Optional[UUID] = None
@@ -468,7 +473,7 @@ class PutawayTaskResponse(BaseModel):
 
 
 class PutawayCompleteRequest(BaseModel):
-    actual_location_id: UUID
+    actual_location: str = Field(..., description="UUID o Código de la ubicación")
     override_reason: Optional[str] = Field(None, max_length=500,
         description="Obligatorio si la ubicación real difiere de la sugerida")
 

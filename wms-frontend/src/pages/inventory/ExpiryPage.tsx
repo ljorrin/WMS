@@ -5,6 +5,7 @@ import { inventoryApi, warehouseApi } from '@/api/endpoints'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Table, Thead, Tbody, Tr, Th, Td, EmptyRow } from '@/components/ui/Table'
+import { Pagination } from '@/components/ui/Pagination'
 import { fmt } from '@/utils/format'
 import { cn } from '@/utils/cn'
 
@@ -14,6 +15,8 @@ export function ExpiryPage() {
   const [warehouseId, setWarehouseId] = useState('')
   const [days, setDays] = useState(30)
   const [mode, setMode] = useState<'near' | 'expired'>('near')
+  const [page, setPage] = useState(1)
+  const PAGE_SIZE = 25
 
   const { data: warehouses } = useQuery({
     queryKey: ['warehouses'],
@@ -28,10 +31,10 @@ export function ExpiryPage() {
   }, [warehouses, warehouseId])
 
   const { data, isLoading } = useQuery({
-    queryKey: ['expiry', warehouseId, days, mode],
+    queryKey: ['expiry', warehouseId, days, mode, page],
     queryFn: () => mode === 'near'
-      ? inventoryApi.getNearExpiry(warehouseId, days)
-      : inventoryApi.getExpired(warehouseId),
+      ? inventoryApi.getNearExpiry(warehouseId, days, page, PAGE_SIZE)
+      : inventoryApi.getExpired(warehouseId, page, PAGE_SIZE),
     enabled: !!warehouseId,
     placeholderData: prev => prev,
   })
@@ -49,11 +52,11 @@ export function ExpiryPage() {
             {warehouses?.items.map(w => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
           </select>
           <div className="inline-flex rounded-lg border border-gray-300 overflow-hidden">
-            <button onClick={() => setMode('near')}
+            <button onClick={() => { setMode('near'); setPage(1); }}
               className={cn('px-3 py-1.5 text-sm', mode === 'near' ? 'bg-primary-600 text-white' : 'bg-white text-gray-600')}>
               Por vencer
             </button>
-            <button onClick={() => setMode('expired')}
+            <button onClick={() => { setMode('expired'); setPage(1); }}
               className={cn('px-3 py-1.5 text-sm', mode === 'expired' ? 'bg-red-600 text-white' : 'bg-white text-gray-600')}>
               Vencidos
             </button>
@@ -102,8 +105,8 @@ export function ExpiryPage() {
                 const critical = (b.days_to_expiry ?? 999) <= 7 || b.is_expired
                 return (
                   <Tr key={b.id} className={critical ? 'bg-red-50/40' : ''}>
-                    <Td><span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{b.lot_number}</span></Td>
-                    <Td className="text-gray-600 text-xs">{b.product_id}</Td>
+                    <Td><span className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{b.lot_number || (b as any).batch_number}</span></Td>
+                    <Td className="text-gray-900 font-medium text-sm">{(b as any).product_name ?? b.product_id}</Td>
                     <Td className={cn('text-xs', critical && 'text-red-600 font-semibold')}>
                       <span className="inline-flex items-center gap-1">
                         <CalendarClock className="h-3 w-3" /> {fmt.date(b.expiry_date)}
@@ -129,6 +132,7 @@ export function ExpiryPage() {
             )}
           </Tbody>
         </Table>
+        <Pagination page={page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />
       </Card>
     </div>
   )

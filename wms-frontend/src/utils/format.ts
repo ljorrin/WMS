@@ -11,16 +11,23 @@ export const fmt = {
   relative: (d?: string | null) =>
     d ? formatDistanceToNow(parseISO(d), { addSuffix: true, locale: es }) : '—',
 
-  currency: (n?: number | null, currency = 'USD') =>
-    n != null
-      ? new Intl.NumberFormat('es-PA', { style: 'currency', currency }).format(n)
-      : '—',
+  currency: (n?: number | string | null, currency = 'USD') => {
+    if (n == null) return '—'
+    const num = Number(n)
+    return isNaN(num) ? '—' : new Intl.NumberFormat('es-PA', { style: 'currency', currency }).format(num)
+  },
 
-  number: (n?: number | null, decimals = 2) =>
-    n != null ? n.toLocaleString('es-PA', { maximumFractionDigits: decimals }) : '—',
+  number: (n?: number | string | null, decimals = 2) => {
+    if (n == null) return '—'
+    const num = Number(n)
+    return isNaN(num) ? '—' : num.toLocaleString('es-PA', { maximumFractionDigits: decimals })
+  },
 
-  pct: (n?: number | null) =>
-    n != null ? `${n.toFixed(1)}%` : '—',
+  pct: (n?: number | string | null) => {
+    if (n == null) return '—'
+    const num = Number(n)
+    return isNaN(num) ? '—' : `${num.toFixed(1)}%`
+  },
 
   seconds: (s?: number | null) => {
     if (s == null) return '—'

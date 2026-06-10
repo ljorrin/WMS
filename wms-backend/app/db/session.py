@@ -45,7 +45,7 @@ def _create_engine() -> AsyncEngine:
             "max_overflow": settings.DB_MAX_OVERFLOW,
             "pool_timeout": settings.DB_POOL_TIMEOUT,
             "pool_recycle": settings.DB_POOL_RECYCLE,
-            "pool_pre_ping": True,  # Verifica conexiones antes de usar
+            "pool_pre_ping": False,  # Desactivado para evitar MissingGreenlet con asyncpg
         })
 
     return create_async_engine(settings.DATABASE_URL, **engine_kwargs)

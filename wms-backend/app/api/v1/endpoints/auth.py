@@ -34,7 +34,7 @@ from app.core.security import (
 )
 from app.db.redis import get_session_redis, is_token_revoked, revoke_token
 from app.db.session import get_db
-from app.models.core import AuditAction, AuditLog, User, UserStatus
+from app.models.core import AuditAction, AuditLog, User, UserStatus, UserRole
 from app.schemas.auth import (
     ChangePasswordRequest, CurrentUserResponse, LoginRequest,
     LoginRFRequest, LogoutRequest, MessageResponse,
@@ -128,7 +128,7 @@ async def login(
     stmt = (
         select(User)
         .where(User.email == body.email.lower())
-        .options(selectinload(User.user_roles))
+        .options(selectinload(User.user_roles).selectinload(UserRole.role))
     )
     result = await db.execute(stmt)
     user: User | None = result.scalar_one_or_none()
@@ -148,7 +148,6 @@ async def login(
         user.failed_login_attempts += 1
         if user.failed_login_attempts >= 5:
             user.status = UserStatus.LOCKED
-            from datetime import timezone
             user.locked_until = datetime.now(timezone.utc) + timedelta(hours=1)
             logger.warning("User account locked", user_id=str(user.id))
 
@@ -236,6 +235,7 @@ async def login_rf(
             or_(User.username == body.username, User.employee_id == body.username),
             User.status == UserStatus.ACTIVE,
         )
+        .options(selectinload(User.user_roles).selectinload(UserRole.role))
     )
     user: User | None = (await db.execute(stmt)).scalar_one_or_none()
 

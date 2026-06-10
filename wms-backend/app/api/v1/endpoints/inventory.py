@@ -571,18 +571,25 @@ async def complete_cycle_count(
 async def get_near_expiry_batches(
     warehouse_id: uuid.UUID = Query(...),
     days_ahead: int = Query(default=30, ge=1, le=365),
+    pagination: PaginationDep = None,
     current_user: CurrentUserDep = None,
     db: DBDep = None,
 ) -> dict:
     """Lotes que vencen en los próximos N días — crítico para FEFO."""
     svc = get_inventory_service(current_user, db)
-    batches = await svc.batches.get_near_expiry(
-        current_user.tenant_id, warehouse_id, days_ahead=days_ahead
+    batches, total = await svc.batches.get_near_expiry(
+        current_user.tenant_id, 
+        warehouse_id, 
+        days_ahead=days_ahead,
+        offset=pagination.offset,
+        limit=pagination.limit,
     )
     return {
         "items": [BatchResponse.model_validate(b) for b in batches],
-        "total": len(batches),
+        "total": total,
         "days_ahead": days_ahead,
+        "page": pagination.page,
+        "page_size": pagination.page_size,
     }
 
 
@@ -592,16 +599,24 @@ async def get_near_expiry_batches(
 )
 async def get_expired_batches(
     warehouse_id: uuid.UUID = Query(...),
+    pagination: PaginationDep = None,
     current_user: CurrentUserDep = None,
     db: DBDep = None,
 ) -> dict:
     """Lotes ya vencidos que aún tienen stock — requieren acción inmediata."""
     svc = get_inventory_service(current_user, db)
-    batches = await svc.batches.get_expired(current_user.tenant_id, warehouse_id)
+    batches, total = await svc.batches.get_expired(
+        current_user.tenant_id, 
+        warehouse_id,
+        offset=pagination.offset,
+        limit=pagination.limit,
+    )
     return {
         "items": [BatchResponse.model_validate(b) for b in batches],
-        "total": len(batches),
+        "total": total,
         "warning": "Estos lotes están vencidos y deben ser procesados inmediatamente.",
+        "page": pagination.page,
+        "page_size": pagination.page_size,
     }
 
 

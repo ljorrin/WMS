@@ -109,10 +109,15 @@ export function PickingPage() {
             ) : (
               data.items.map(t => (
                 <Tr key={t.id}>
-                  <Td className="text-gray-600 text-xs font-mono">{t.product_id}</Td>
+                  <Td>
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-gray-900">{t.product_name ?? 'Producto Desconocido'}</span>
+                      <span className="text-gray-400 text-xs font-mono">{t.product_id.slice(0, 8)}</span>
+                    </div>
+                  </Td>
                   <Td className="text-xs text-gray-500">
-                    <span className="inline-flex items-center gap-1">
-                      <MapPin className="h-3 w-3" /> {t.from_location_id?.slice(0, 8) ?? '—'}
+                    <span className="inline-flex items-center gap-1" title={t.from_location_id}>
+                      <MapPin className="h-3 w-3" /> {t.from_location_code ?? t.from_location_id?.slice(0, 8) ?? '—'}
                     </span>
                   </Td>
                   <Td className="font-medium">{fmt.number(t.quantity_requested)}</Td>

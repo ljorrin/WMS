@@ -46,18 +46,20 @@ class BatchResponse(WMSSchema):
     tenant_id: uuid.UUID
     product_id: uuid.UUID
     warehouse_id: uuid.UUID
-    lot_number: str
-    expiry_date: Optional[date]
-    manufacture_date: Optional[date]
-    supplier_lot: Optional[str]
-    quantity_received: Decimal
-    quantity_available: Decimal
-    quantity_on_hold: Decimal
+    lot_number: str = Field(alias="batch_number")
+    expiry_date: Optional[date] = None
+    manufacture_date: Optional[date] = None
+    supplier_lot: Optional[str] = None
+    quantity_received: Decimal = Decimal("0")
+    quantity_available: Decimal = Decimal("0")
+    quantity_on_hold: Decimal = Decimal("0")
     days_to_expiry: Optional[int] = None
     is_expired: bool = False
     is_near_expiry: bool = False
-    status: str
+    status: str = "active"
     created_at: datetime
+    product_code: Optional[str] = None
+    product_name: Optional[str] = None
 
 
 # ── Serial Number ─────────────────────────────────────────────────────────────
@@ -75,10 +77,10 @@ class SerialNumberResponse(WMSSchema):
     product_id: uuid.UUID
     serial_number: str
     status: str
-    location_id: Optional[uuid.UUID]
-    batch_id: Optional[uuid.UUID]
+    location_id: Optional[uuid.UUID] = None
+    batch_id: Optional[uuid.UUID] = None
     received_at: datetime
-    shipped_at: Optional[datetime]
+    shipped_at: Optional[datetime] = None
 
 
 # ── Inventory Level (Stock por ubicación) ─────────────────────────────────────
@@ -90,17 +92,19 @@ class InventoryLevelResponse(WMSSchema):
     warehouse_id: uuid.UUID
     product_id: uuid.UUID
     location_id: uuid.UUID
-    batch_id: Optional[uuid.UUID]
-    serial_id: Optional[uuid.UUID]
+    batch_id: Optional[uuid.UUID] = None
+    serial_id: Optional[uuid.UUID] = None
 
     # Cantidades
     quantity_on_hand: Decimal       # Físico total en la ubicación
     quantity_available: Decimal     # Disponible para picking
     quantity_reserved: Decimal      # Reservado para órdenes
-    quantity_in_transit: Decimal    # En movimiento
+    quantity_in_transit: Decimal = Decimal("0")    # En movimiento
+    quantity_in_picking: Decimal = Decimal("0")
+    quantity_damaged: Decimal = Decimal("0")
 
     status: str
-    tracking_type: str
+    tracking_type: str = "DEFAULT"
 
     # Datos derivados (calculados)
     product_code: Optional[str] = None
@@ -110,8 +114,8 @@ class InventoryLevelResponse(WMSSchema):
     expiry_date: Optional[date] = None
     days_to_expiry: Optional[int] = None
 
-    last_movement_at: Optional[datetime]
-    last_count_at: Optional[datetime]
+    last_movement_at: Optional[datetime] = None
+    last_count_at: Optional[datetime] = None
     updated_at: datetime
 
 
@@ -201,21 +205,21 @@ class InventoryMovementResponse(WMSSchema):
     product_id: uuid.UUID
     movement_type: str
     quantity: Decimal
-    unit_cost: Optional[Decimal]
-    total_cost: Optional[Decimal]
+    unit_cost: Optional[Decimal] = None
+    total_cost: Optional[Decimal] = None
 
-    from_location_id: Optional[uuid.UUID]
-    to_location_id: Optional[uuid.UUID]
-    batch_id: Optional[uuid.UUID]
-    serial_id: Optional[uuid.UUID]
-    lot_number: Optional[str]
+    from_location_id: Optional[uuid.UUID] = None
+    to_location_id: Optional[uuid.UUID] = None
+    batch_id: Optional[uuid.UUID] = None
+    serial_id: Optional[uuid.UUID] = Field(None, alias="serial_number_id")
+    lot_number: Optional[str] = None
 
-    reference_type: Optional[str]
-    reference_id: Optional[uuid.UUID]
-    reference_number: Optional[str]
+    reference_type: Optional[str] = Field(None, alias="source_document_type")
+    reference_id: Optional[uuid.UUID] = Field(None, alias="source_document_id")
+    reference_number: Optional[str] = Field(None, alias="source_document_number")
 
-    notes: Optional[str]
-    user_id: Optional[uuid.UUID]
+    notes: Optional[str] = None
+    user_id: Optional[uuid.UUID] = Field(None, alias="operator_id")
     occurred_at: datetime
 
     # Datos enriquecidos
@@ -223,6 +227,9 @@ class InventoryMovementResponse(WMSSchema):
     product_name: Optional[str] = None
     from_location_code: Optional[str] = None
     to_location_code: Optional[str] = None
+    location_id: Optional[uuid.UUID] = None
+    location_code: Optional[str] = None
+    batch_number: Optional[str] = None
 
 
 class MovementListResponse(WMSSchema):
@@ -275,13 +282,13 @@ class AdjustmentLineResponse(WMSSchema):
     location_id: uuid.UUID
     batch_id: Optional[uuid.UUID]
     lot_number: Optional[str]
-    quantity_system: Decimal
-    quantity_physical: Decimal
-    variance: Decimal
-    variance_type: str
-    unit_cost: Optional[Decimal]
-    total_variance_cost: Optional[Decimal]
-    notes: Optional[str]
+    quantity_system: Decimal = Decimal("0")
+    quantity_physical: Decimal = Decimal("0")
+    variance: Decimal = Decimal("0")
+    variance_type: str = "none"
+    unit_cost: Optional[Decimal] = None
+    total_variance_cost: Optional[Decimal] = None
+    notes: Optional[str] = None
     product_code: Optional[str] = None
     product_name: Optional[str] = None
     location_code: Optional[str] = None
@@ -350,15 +357,15 @@ class CycleCountLineResponse(WMSSchema):
     id: uuid.UUID
     location_id: uuid.UUID
     product_id: uuid.UUID
-    batch_id: Optional[uuid.UUID]
-    lot_number: Optional[str]
-    quantity_system: Optional[Decimal]
-    quantity_counted: Optional[Decimal]
-    variance: Optional[Decimal]
-    variance_pct: Optional[Decimal]
-    status: str    # pending | counted | verified | discrepancy
-    counted_at: Optional[datetime]
-    counted_by: Optional[uuid.UUID]
+    batch_id: Optional[uuid.UUID] = None
+    lot_number: Optional[str] = None
+    quantity_system: Optional[Decimal] = None
+    quantity_counted: Optional[Decimal] = None
+    variance: Optional[Decimal] = None
+    variance_pct: Optional[Decimal] = None
+    status: str = "pending"   # pending | counted | verified | discrepancy
+    counted_at: Optional[datetime] = None
+    counted_by: Optional[uuid.UUID] = None
     location_code: Optional[str] = None
     product_code: Optional[str] = None
     product_name: Optional[str] = None
@@ -372,15 +379,15 @@ class CycleCountResponse(WMSSchema):
     name: str
     count_type: str
     status: str     # draft | in_progress | completed | cancelled
-    scheduled_date: Optional[date]
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    notes: Optional[str]
+    scheduled_date: Optional[date] = None
+    started_at: Optional[datetime] = None
+    completed_at: Optional[datetime] = None
+    notes: Optional[str] = None
     lines: List[CycleCountLineResponse] = []
     total_lines: int
     counted_lines: int
     discrepancy_lines: int
-    accuracy_pct: Optional[Decimal]
+    accuracy_pct: Optional[Decimal] = None
     created_at: datetime
 
 
@@ -411,9 +418,9 @@ class InventoryReservationResponse(WMSSchema):
     reference_type: str
     reference_id: uuid.UUID
     reference_number: str
-    batch_id: Optional[uuid.UUID]
-    location_id: Optional[uuid.UUID]
-    expires_at: Optional[datetime]
+    batch_id: Optional[uuid.UUID] = None
+    location_id: Optional[uuid.UUID] = None
+    expires_at: Optional[datetime] = None
     created_at: datetime
 
 
@@ -426,9 +433,9 @@ class StockAlertResponse(WMSSchema):
     alert_type: str    # below_min | above_max | near_expiry | expired | blocked
     severity: str      # info | warning | critical
     current_quantity: Decimal
-    threshold_quantity: Optional[Decimal]
-    expiry_date: Optional[date]
-    days_to_expiry: Optional[int]
+    threshold_quantity: Optional[Decimal] = None
+    expiry_date: Optional[date] = None
+    days_to_expiry: Optional[int] = None
     message: str
     is_resolved: bool
     created_at: datetime

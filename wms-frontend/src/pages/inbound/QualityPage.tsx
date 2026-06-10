@@ -92,7 +92,12 @@ export function QualityPage() {
                 const pending = ['pending', 'in_progress'].includes(qi.status)
                 return (
                   <Tr key={qi.id}>
-                    <Td><span className="font-mono font-medium text-primary-700">{qi.qi_number}</span></Td>
+                    <Td>
+                      <button onClick={() => pending && setTarget(qi)}
+                        className={cn("font-mono font-medium", pending ? "text-primary-700 hover:text-primary-900 hover:underline cursor-pointer" : "text-gray-900 cursor-default")}>
+                        {qi.qi_number}
+                      </button>
+                    </Td>
                     <Td><Badge status={qi.status} /></Td>
                     <Td className="text-xs text-gray-500">{qi.aql_level ?? '—'}</Td>
                     <Td>{fmt.number(qi.total_inspected)}</Td>

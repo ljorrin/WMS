@@ -113,6 +113,7 @@ export function ShipmentsPage() {
           <Thead>
             <Tr>
               <Th>Número</Th>
+              <Th>Orden / Cliente</Th>
               <Th>Estado</Th>
               <Th>Transportista</Th>
               <Th>Tracking</Th>
@@ -137,6 +138,12 @@ export function ShipmentsPage() {
               data.items.map(s => (
                 <Tr key={s.id}>
                   <Td><span className="font-mono font-medium text-primary-700">{s.shipment_number}</span></Td>
+                  <Td>
+                    <div className="flex flex-col">
+                      <span className="font-semibold text-gray-900">{s.so_number ?? '—'}</span>
+                      <span className="text-gray-500 text-xs">{s.customer_name ?? '—'}</span>
+                    </div>
+                  </Td>
                   <Td><Badge status={s.status} /></Td>
                   <Td>
                     <span className="inline-flex items-center gap-1 text-xs text-gray-600">

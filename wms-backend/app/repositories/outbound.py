@@ -373,21 +373,49 @@ class PickingTaskRepository:
         if assigned_to_id:
             filters.append(PickingTask.assigned_to_id == assigned_to_id)
 
+        from app.models.master_data import Product, Location
+        from app.models.core import User
+        from sqlalchemy.orm import aliased
+        
+        LocFrom = aliased(Location)
+        LocTo = aliased(Location)
+
         total = (
             await self.db.execute(
                 select(func.count(PickingTask.id)).where(and_(*filters))
             )
         ).scalar_one()
-        rows = (
+        
+        result = (
             await self.db.execute(
-                select(PickingTask)
+                select(
+                    PickingTask,
+                    Product.name.label("product_name"),
+                    LocFrom.code.label("from_location_code"),
+                    LocTo.code.label("to_location_code"),
+                    User.full_name.label("assigned_to_name")
+                )
+                .join(Product, PickingTask.product_id == Product.id)
+                .outerjoin(LocFrom, PickingTask.from_location_id == LocFrom.id)
+                .outerjoin(LocTo, PickingTask.to_location_id == LocTo.id)
+                .outerjoin(User, PickingTask.assigned_to_id == User.id)
                 .where(and_(*filters))
                 .order_by(PickingTask.priority.asc(), PickingTask.created_at.asc())
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             )
-        ).scalars().all()
-        return list(rows), total
+        ).all()
+        
+        tasks = []
+        for row in result:
+            task = row.PickingTask
+            task.product_name = row.product_name
+            task.from_location_code = row.from_location_code
+            task.to_location_code = row.to_location_code
+            task.assigned_to_name = row.assigned_to_name
+            tasks.append(task)
+            
+        return tasks, total
 
     async def start(self, task_id: UUID, operator_id: UUID) -> None:
         await self.db.execute(
@@ -557,21 +585,38 @@ class PackTaskRepository:
         if status:
             filters.append(PackTask.status == status)
 
+        from app.models.core import User
+        
         total = (
             await self.db.execute(
                 select(func.count(PackTask.id)).where(and_(*filters))
             )
         ).scalar_one()
-        rows = (
+        
+        result = (
             await self.db.execute(
-                select(PackTask)
+                select(
+                    PackTask,
+                    SalesOrder.so_number.label("so_number"),
+                    User.full_name.label("assigned_to_name")
+                )
+                .join(SalesOrder, PackTask.so_id == SalesOrder.id)
+                .outerjoin(User, PackTask.assigned_to_id == User.id)
                 .where(and_(*filters))
                 .order_by(PackTask.created_at.asc())
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             )
-        ).scalars().all()
-        return list(rows), total
+        ).all()
+        
+        tasks = []
+        for row in result:
+            task = row.PackTask
+            task.so_number = row.so_number
+            task.assigned_to_name = row.assigned_to_name
+            tasks.append(task)
+            
+        return tasks, total
 
     async def start(self, task_id: UUID, operator_id: UUID) -> None:
         await self.db.execute(
@@ -667,21 +712,38 @@ class ShipmentRepository:
         if warehouse_id:
             filters.append(Shipment.warehouse_id == warehouse_id)
 
+        from app.models.master_data import Customer
+        
         total = (
             await self.db.execute(
                 select(func.count(Shipment.id)).where(and_(*filters))
             )
         ).scalar_one()
-        rows = (
+        
+        result = (
             await self.db.execute(
-                select(Shipment)
+                select(
+                    Shipment,
+                    SalesOrder.so_number.label("so_number"),
+                    Customer.name.label("customer_name")
+                )
+                .join(SalesOrder, Shipment.so_id == SalesOrder.id)
+                .join(Customer, SalesOrder.customer_id == Customer.id)
                 .where(and_(*filters))
                 .order_by(Shipment.created_at.desc())
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             )
-        ).scalars().all()
-        return list(rows), total
+        ).all()
+        
+        shipments = []
+        for row in result:
+            shipment = row.Shipment
+            shipment.so_number = row.so_number
+            shipment.customer_name = row.customer_name
+            shipments.append(shipment)
+            
+        return shipments, total
 
     async def dispatch(self, shipment_id: UUID, data: dict) -> None:
         await self.db.execute(
@@ -780,21 +842,39 @@ class ReturnOrderRepository:
         if customer_id:
             filters.append(ReturnOrder.customer_id == customer_id)
 
+        from app.models.master_data import Customer
+        from app.models.outbound import SalesOrder
+        
         total = (
             await self.db.execute(
                 select(func.count(ReturnOrder.id)).where(and_(*filters))
             )
         ).scalar_one()
-        rows = (
+        
+        result = (
             await self.db.execute(
-                select(ReturnOrder)
+                select(
+                    ReturnOrder,
+                    SalesOrder.so_number.label("so_number"),
+                    Customer.name.label("customer_name")
+                )
+                .join(Customer, ReturnOrder.customer_id == Customer.id)
+                .outerjoin(SalesOrder, ReturnOrder.so_id == SalesOrder.id)
                 .where(and_(*filters))
                 .order_by(ReturnOrder.created_at.desc())
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             )
-        ).scalars().all()
-        return list(rows), total
+        ).all()
+        
+        rmas = []
+        for row in result:
+            rma = row.ReturnOrder
+            rma.so_number = row.so_number
+            rma.customer_name = row.customer_name
+            rmas.append(rma)
+            
+        return rmas, total
 
     async def update_status(self, rma_id: UUID, status: ReturnOrderStatus, **extra) -> None:
         await self.db.execute(

@@ -57,11 +57,10 @@ class InventoryLevelRepository:
         product_id: uuid.UUID,
         location_id: uuid.UUID,
         batch_id: Optional[uuid.UUID] = None,
-        serial_id: Optional[uuid.UUID] = None,
     ) -> InventoryLevel:
         """
         Obtiene el nivel de stock existente o crea uno nuevo.
-        La combinación (warehouse, product, location, batch, serial) es única.
+        La combinación (warehouse, product, location, batch) es única.
         """
         stmt = select(InventoryLevel).where(
             InventoryLevel.tenant_id == tenant_id,
@@ -69,7 +68,6 @@ class InventoryLevelRepository:
             InventoryLevel.product_id == product_id,
             InventoryLevel.location_id == location_id,
             InventoryLevel.batch_id == batch_id,
-            InventoryLevel.serial_id == serial_id,
         )
         result = await self.db.execute(stmt)
         level = result.scalar_one_or_none()
@@ -81,11 +79,11 @@ class InventoryLevelRepository:
                 product_id=product_id,
                 location_id=location_id,
                 batch_id=batch_id,
-                serial_id=serial_id,
                 quantity_on_hand=Decimal("0"),
                 quantity_available=Decimal("0"),
                 quantity_reserved=Decimal("0"),
-                quantity_in_transit=Decimal("0"),
+                quantity_in_picking=Decimal("0"),
+                quantity_damaged=Decimal("0"),
                 status=InventoryStatus.AVAILABLE,
             )
             self.db.add(level)
@@ -96,7 +94,7 @@ class InventoryLevelRepository:
     async def list_by_warehouse(
         self,
         tenant_id: uuid.UUID,
-        warehouse_id: uuid.UUID,
+        warehouse_id: Optional[uuid.UUID] = None,
         product_id: Optional[uuid.UUID] = None,
         location_id: Optional[uuid.UUID] = None,
         status: Optional[InventoryStatus] = None,
@@ -106,10 +104,23 @@ class InventoryLevelRepository:
         limit: int = 50,
     ) -> tuple[Sequence[InventoryLevel], int]:
         """Lista stock con filtros. Retorna (items, total)."""
-        stmt = select(InventoryLevel).where(
-            InventoryLevel.tenant_id == tenant_id,
-            InventoryLevel.warehouse_id == warehouse_id,
+        stmt = (
+            select(
+                InventoryLevel,
+                Product.sku.label("product_code"),
+                Product.name.label("product_name"),
+                Location.code.label("location_code"),
+                Batch.batch_number.label("lot_number"),
+                Batch.expiry_date.label("expiry_date")
+            )
+            .join(Product, InventoryLevel.product_id == Product.id)
+            .join(Location, InventoryLevel.location_id == Location.id)
+            .outerjoin(Batch, InventoryLevel.batch_id == Batch.id)
+            .where(InventoryLevel.tenant_id == tenant_id)
         )
+        
+        if warehouse_id:
+            stmt = stmt.where(InventoryLevel.warehouse_id == warehouse_id)
 
         if product_id:
             stmt = stmt.where(InventoryLevel.product_id == product_id)
@@ -121,10 +132,9 @@ class InventoryLevelRepository:
             stmt = stmt.where(InventoryLevel.quantity_on_hand > 0)
 
         if near_expiry_days:
-            # Join con Batch para filtrar por fecha de vencimiento
             from datetime import timedelta
             cutoff_date = datetime.now(timezone.utc).date() + timedelta(days=near_expiry_days)
-            stmt = stmt.join(Batch, InventoryLevel.batch_id == Batch.id, isouter=True).where(
+            stmt = stmt.where(
                 or_(
                     Batch.expiry_date <= cutoff_date,
                     Batch.expiry_date.is_(None),
@@ -135,7 +145,17 @@ class InventoryLevelRepository:
         total = (await self.db.execute(count_stmt)).scalar_one()
 
         stmt = stmt.offset(offset).limit(limit).order_by(InventoryLevel.updated_at.desc())
-        items = (await self.db.execute(stmt)).scalars().all()
+        results = (await self.db.execute(stmt)).all()
+
+        items = []
+        for row in results:
+            level = row.InventoryLevel
+            level.product_code = row.product_code
+            level.product_name = row.product_name
+            level.location_code = row.location_code
+            level.lot_number = row.lot_number
+            level.expiry_date = row.expiry_date
+            items.append(level)
 
         return items, total
 
@@ -324,7 +344,25 @@ class InventoryMovementRepository:
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[Sequence[InventoryMovement], int]:
-        stmt = select(InventoryMovement).where(InventoryMovement.tenant_id == tenant_id)
+        from sqlalchemy.orm import aliased
+        FromLocation = aliased(Location)
+        ToLocation = aliased(Location)
+
+        stmt = (
+            select(
+                InventoryMovement,
+                Product.sku.label("product_code"),
+                Product.name.label("product_name"),
+                FromLocation.code.label("from_location_code"),
+                ToLocation.code.label("to_location_code"),
+                Batch.batch_number.label("lot_number")
+            )
+            .join(Product, InventoryMovement.product_id == Product.id)
+            .outerjoin(FromLocation, InventoryMovement.from_location_id == FromLocation.id)
+            .outerjoin(ToLocation, InventoryMovement.to_location_id == ToLocation.id)
+            .outerjoin(Batch, InventoryMovement.batch_id == Batch.id)
+            .where(InventoryMovement.tenant_id == tenant_id)
+        )
 
         if warehouse_id:
             stmt = stmt.where(InventoryMovement.warehouse_id == warehouse_id)
@@ -352,7 +390,21 @@ class InventoryMovementRepository:
         total = (await self.db.execute(count_stmt)).scalar_one()
 
         stmt = stmt.offset(offset).limit(limit).order_by(InventoryMovement.occurred_at.desc())
-        items = (await self.db.execute(stmt)).scalars().all()
+        results = (await self.db.execute(stmt)).all()
+
+        items = []
+        for row in results:
+            mov = row.InventoryMovement
+            mov.product_code = row.product_code
+            mov.product_name = row.product_name
+            mov.from_location_code = row.from_location_code
+            mov.to_location_code = row.to_location_code
+            mov.lot_number = row.lot_number
+            # Compatibilidad con frontend
+            mov.location_id = mov.to_location_id or mov.from_location_id
+            mov.location_code = row.to_location_code or row.from_location_code
+            mov.batch_number = row.lot_number
+            items.append(mov)
 
         return items, total
 
@@ -416,42 +468,101 @@ class BatchRepository:
         tenant_id: uuid.UUID,
         warehouse_id: uuid.UUID,
         days_ahead: int = 30,
-    ) -> List[Batch]:
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[List[Batch], int]:
         """Lotes que vencen en los próximos N días."""
         from datetime import timedelta
         cutoff = datetime.now(timezone.utc).date() + timedelta(days=days_ahead)
 
-        result = await self.db.execute(
-            select(Batch)
+        stmt = (
+            select(
+                Batch,
+                Product.sku.label("product_code"),
+                Product.name.label("product_name"),
+                func.sum(InventoryLevel.quantity_available).label("qty_avail"),
+                func.sum(InventoryLevel.quantity_reserved).label("qty_hold"),
+            )
+            .join(Product, Batch.product_id == Product.id)
+            .join(InventoryLevel, InventoryLevel.batch_id == Batch.id)
             .where(
                 Batch.tenant_id == tenant_id,
                 Batch.warehouse_id == warehouse_id,
                 Batch.expiry_date.is_not(None),
                 Batch.expiry_date <= cutoff,
-                Batch.quantity_available > 0,
+                InventoryLevel.quantity_available > 0,
             )
-            .order_by(Batch.expiry_date.asc())
+            .group_by(Batch.id, Product.sku, Product.name)
         )
-        return result.scalars().all()
+        
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await self.db.execute(count_stmt)).scalar_one()
+
+        stmt = stmt.order_by(Batch.expiry_date.asc()).offset(offset).limit(limit)
+        result = await self.db.execute(stmt)
+        
+        items = []
+        today_date = datetime.now(timezone.utc).date()
+        for row in result.all():
+            batch = row.Batch
+            batch.product_code = row.product_code
+            batch.product_name = row.product_name
+            batch.quantity_available = row.qty_avail or 0
+            batch.quantity_on_hold = row.qty_hold or 0
+            if batch.expiry_date:
+                batch.days_to_expiry = (batch.expiry_date - today_date).days
+                batch.is_expired = batch.days_to_expiry < 0
+                batch.is_near_expiry = 0 <= batch.days_to_expiry <= 30
+            items.append(batch)
+        return items, total
 
     async def get_expired(
         self,
         tenant_id: uuid.UUID,
         warehouse_id: uuid.UUID,
-    ) -> List[Batch]:
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[List[Batch], int]:
         """Lotes ya vencidos con stock disponible."""
         today = datetime.now(timezone.utc).date()
-        result = await self.db.execute(
-            select(Batch)
+        stmt = (
+            select(
+                Batch,
+                Product.sku.label("product_code"),
+                Product.name.label("product_name"),
+                func.sum(InventoryLevel.quantity_available).label("qty_avail"),
+                func.sum(InventoryLevel.quantity_reserved).label("qty_hold"),
+            )
+            .join(Product, Batch.product_id == Product.id)
+            .join(InventoryLevel, InventoryLevel.batch_id == Batch.id)
             .where(
                 Batch.tenant_id == tenant_id,
                 Batch.warehouse_id == warehouse_id,
                 Batch.expiry_date < today,
-                Batch.quantity_available > 0,
+                InventoryLevel.quantity_available > 0,
             )
-            .order_by(Batch.expiry_date.asc())
+            .group_by(Batch.id, Product.sku, Product.name)
         )
-        return result.scalars().all()
+        
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await self.db.execute(count_stmt)).scalar_one()
+
+        stmt = stmt.order_by(Batch.expiry_date.asc()).offset(offset).limit(limit)
+        result = await self.db.execute(stmt)
+        
+        items = []
+        for row in result.all():
+            batch = row.Batch
+            batch.product_code = row.product_code
+            batch.product_name = row.product_name
+            batch.quantity_available = row.qty_avail or 0
+            batch.quantity_on_hold = row.qty_hold or 0
+            if batch.expiry_date:
+                batch.days_to_expiry = (batch.expiry_date - today).days
+                batch.is_expired = True
+                batch.is_near_expiry = False
+            items.append(batch)
+        return items, total
 
 
 class ReservationRepository:
