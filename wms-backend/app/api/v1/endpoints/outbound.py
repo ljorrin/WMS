@@ -718,3 +718,73 @@ async def shipment_packing_list(shipment_id: UUID, db: DBDep, current_user: Curr
         content=pdf, media_type="application/pdf",
         headers={"Content-Disposition": f"inline; filename={filename}"},
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MODOS DE PICKING — lista consolidada por método (FR-051/052/054)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@router.get(
+    "/waves/{wave_id}/pick-list",
+    summary="Lista de picking consolidada según el método de la wave (zona/batch/cluster)",
+    dependencies=[Depends(require_permission("outbound:picking:execute"))],
+)
+async def wave_pick_list(wave_id: UUID, db: DBDep, current_user: CurrentUserDep) -> dict:
+    """Devuelve la lista de picking organizada según `picking_method` de la wave:
+      - ZONE   → tareas agrupadas por zona de la ubicación.
+      - BATCH  → demanda agregada por producto (recoger total, separar después).
+      - CLUSTER→ tareas agrupadas por orden (un contenedor por orden).
+      - DISCRETE → lista plana.
+    """
+    from sqlalchemy import select, and_
+    from app.models.outbound import PickingTask, PickingMethod, PickingStatus
+    from app.models.master_data import Location
+
+    svc = _svc(db, current_user)
+    wave = await svc.wave_repo.get_by_id(wave_id)
+    if not wave:
+        raise HTTPException(status_code=404, detail="Wave no encontrada.")
+
+    tasks = (await db.execute(
+        select(PickingTask).where(and_(
+            PickingTask.tenant_id == current_user.tenant_id,
+            PickingTask.wave_id == wave_id,
+            PickingTask.status.in_([PickingStatus.PENDING, PickingStatus.IN_PROGRESS]),
+        ))
+    )).scalars().all()
+
+    method = getattr(wave.picking_method, "value", str(wave.picking_method))
+
+    def base(t):
+        return {"task_id": str(t.id), "so_id": str(t.so_id), "product_id": str(t.product_id),
+                "from_location_id": str(t.from_location_id) if t.from_location_id else None,
+                "quantity_requested": float(t.quantity_requested or 0)}
+
+    groups: list[dict] = []
+    if method == PickingMethod.ZONE.value:
+        loc_ids = {t.from_location_id for t in tasks if t.from_location_id}
+        zmap = {}
+        if loc_ids:
+            for lid, zid in (await db.execute(
+                select(Location.id, Location.zone_id).where(Location.id.in_(loc_ids))
+            )).all():
+                zmap[lid] = zid
+        by_zone: dict[str, list] = {}
+        for t in tasks:
+            z = str(zmap.get(t.from_location_id) or "sin_zona")
+            by_zone.setdefault(z, []).append(base(t))
+        groups = [{"zone_id": z, "tasks": ts, "task_count": len(ts)} for z, ts in by_zone.items()]
+    elif method in (PickingMethod.BATCH.value, PickingMethod.CLUSTER.value):
+        key_attr = "product_id" if method == PickingMethod.BATCH.value else "so_id"
+        agg: dict[str, dict] = {}
+        for t in tasks:
+            k = str(getattr(t, key_attr))
+            g = agg.setdefault(k, {key_attr: k, "total_quantity": 0.0, "tasks": []})
+            g["total_quantity"] += float(t.quantity_requested or 0)
+            g["tasks"].append(base(t))
+        groups = list(agg.values())
+    else:  # DISCRETE
+        groups = [{"tasks": [base(t) for t in tasks]}]
+
+    return {"wave_id": str(wave_id), "picking_method": method,
+            "total_tasks": len(tasks), "groups": groups}
