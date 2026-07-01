@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { PlayCircle, Package, Printer } from 'lucide-react'
+import { PlayCircle, Package, Printer, FileDown } from 'lucide-react'
 import { outboundApi } from '@/api/endpoints'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -69,6 +69,31 @@ export function PackingPage() {
   }
 
   const completeValid = boxType.length > 0 && Number(boxCount) >= 1
+
+  const [downloadingId, setDownloadingId] = useState<string | null>(null)
+
+  const downloadPackingList = async (t: PackTask) => {
+    if (!t.shipment_id) {
+      toast.error('Este empaque no tiene un envío asociado aún')
+      return
+    }
+    setDownloadingId(t.id)
+    try {
+      const blob = await outboundApi.getPackingListPdf(t.shipment_id)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `packing-list-${t.pack_task_number}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+    } catch {
+      toast.error('No se pudo descargar el PDF')
+    } finally {
+      setDownloadingId(null)
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -144,6 +169,16 @@ export function PackingPage() {
                         <Button size="sm" variant="secondary" onClick={() => openComplete(t)}>
                           Completar
                         </Button>
+                      )}
+                      {t.status === 'completed' && t.shipment_id && (
+                        <button
+                          onClick={() => downloadPackingList(t)}
+                          title="Descargar packing list PDF"
+                          disabled={downloadingId === t.id}
+                          className="text-primary-600 hover:text-primary-800 transition-colors disabled:opacity-40"
+                        >
+                          <FileDown className="h-4 w-4" />
+                        </button>
                       )}
                     </div>
                   </Td>

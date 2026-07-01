@@ -120,6 +120,7 @@ export interface PurchaseOrder {
   id: string
   po_number: string
   supplier_id: string
+  supplier_name?: string
   warehouse_id: string
   status: POStatus
   order_date: string
@@ -196,9 +197,12 @@ export interface GRNLine {
 export interface PutawayTask {
   id: string
   product_id: string
+  product_name?: string
   quantity: number
   from_location_id: string
+  from_location_code?: string
   suggested_location_id?: string
+  suggested_location_code?: string
   actual_location_id?: string
   status: PutawayStatus
   priority: number
@@ -259,6 +263,7 @@ export interface SalesOrder {
 export interface SOLine {
   id: string
   product_id: string
+  product_name?: string
   quantity_ordered: number
   quantity_picked: number
   quantity_shipped: number
@@ -283,15 +288,21 @@ export interface PickingWave {
 export interface PickingTask {
   id: string
   so_id: string
+  wave_id?: string
   product_id: string
+  product_name?: string
   quantity_requested: number
   quantity_picked: number
   quantity_short: number
   from_location_id: string
+  from_location_code?: string
+  to_location_id?: string
   status: PickingStatus
   priority: number
   assigned_to_id?: string
   cycle_time_seconds?: number
+  started_at?: string
+  completed_at?: string
 }
 
 export type ShipmentStatusType =
@@ -301,6 +312,8 @@ export interface Shipment {
   id: string
   shipment_number: string
   so_id: string
+  so_number?: string
+  customer_name?: string
   warehouse_id: string
   status: ShipmentStatusType
   carrier_type?: string
@@ -486,6 +499,8 @@ export type PackStatusType = 'pending' | 'in_progress' | 'completed' | 'cancelle
 export interface PackTask {
   id: string
   so_id: string
+  so_number?: string
+  shipment_id?: string
   pack_task_number: string
   status: PackStatusType
   box_type?: string
@@ -494,6 +509,7 @@ export interface PackTask {
   total_volume_m3?: number
   sscc?: string
   assigned_to_id?: string
+  assigned_to_name?: string
   started_at?: string
   completed_at?: string
   cycle_time_seconds?: number
@@ -512,7 +528,9 @@ export interface ReturnOrder {
   id: string
   warehouse_id: string
   so_id?: string
+  so_number?: string
   customer_id: string
+  customer_name?: string
   rma_number: string
   status: RMAStatus
   reason: string

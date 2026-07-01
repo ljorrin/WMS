@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Truck, PackageCheck, Ship, Plane } from 'lucide-react'
+import { Plus, Truck, PackageCheck, Ship, Plane } from 'lucide-react'
 import { outboundApi } from '@/api/endpoints'
+import { ShipmentCreateModal } from './ShipmentCreateModal'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -26,6 +27,7 @@ const nowLocal = () => {
 export function ShipmentsPage() {
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState('')
+  const [creating, setCreating] = useState(false)
   const [mode, setMode] = useState<'dispatch' | 'deliver' | null>(null)
   const [target, setTarget] = useState<Shipment | null>(null)
   const qc = useQueryClient()
@@ -100,12 +102,17 @@ export function ShipmentsPage() {
           <h1 className="text-xl font-bold text-gray-900">Envíos</h1>
           <p className="text-sm text-gray-500">{data?.total ?? 0} envíos</p>
         </div>
-        <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }}
-          className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700">
-          {STATUS_FILTERS.map(s => (
-            <option key={s} value={s}>{s ? s.replace(/_/g, ' ') : 'Todos los estados'}</option>
-          ))}
-        </select>
+        <div className="flex gap-2">
+          <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }}
+            className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700">
+            {STATUS_FILTERS.map(s => (
+              <option key={s} value={s}>{s ? s.replace(/_/g, ' ') : 'Todos los estados'}</option>
+            ))}
+          </select>
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" /> Nuevo Envío
+          </Button>
+        </div>
       </div>
 
       <Card padding={false}>
@@ -176,6 +183,8 @@ export function ShipmentsPage() {
         </Table>
         <Pagination page={page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />
       </Card>
+
+      <ShipmentCreateModal open={creating} onClose={() => setCreating(false)} />
 
       {/* Despacho */}
       <Modal

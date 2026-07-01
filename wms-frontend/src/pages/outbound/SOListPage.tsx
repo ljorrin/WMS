@@ -1,13 +1,17 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, CheckCircle, Zap } from 'lucide-react'
+import { Plus, CheckCircle, Zap, XCircle } from 'lucide-react'
 import { outboundApi } from '@/api/endpoints'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { Modal } from '@/components/ui/Modal'
 import { Table, Thead, Tbody, Tr, Th, Td, EmptyRow } from '@/components/ui/Table'
 import { fmt } from '@/utils/format'
 import { cn } from '@/utils/cn'
+import { SOFormModal } from './SOFormModal'
+import type { SalesOrder } from '@/types'
 import toast from 'react-hot-toast'
 
 const PRIORITY_LABEL: Record<number, { label: string; cls: string }> = {
@@ -31,6 +35,9 @@ function PriorityLabel({ p }: { p: number }) {
 export function SOListPage() {
   const [page, setPage] = useState(1)
   const [selected, setSelected] = useState<string[]>([])
+  const [creating, setCreating] = useState(false)
+  const [cancelTarget, setCancelTarget] = useState<SalesOrder | null>(null)
+  const [cancelReason, setCancelReason] = useState('')
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
@@ -45,6 +52,18 @@ export function SOListPage() {
       toast.success('SO confirmada — stock reservado')
       qc.invalidateQueries({ queryKey: ['sos'] })
     },
+    onError: () => toast.error('No se pudo confirmar la SO'),
+  })
+
+  const cancelMut = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      outboundApi.cancelSO(id, reason),
+    onSuccess: () => {
+      toast.success('SO cancelada')
+      setCancelTarget(null); setCancelReason('')
+      qc.invalidateQueries({ queryKey: ['sos'] })
+    },
+    onError: () => toast.error('No se pudo cancelar la SO'),
   })
 
   const waveMut = useMutation({
@@ -64,6 +83,11 @@ export function SOListPage() {
   const toggleSelect = (id: string) =>
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
 
+  const openCancel = (so: SalesOrder) => {
+    setCancelTarget(so)
+    setCancelReason('')
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -77,7 +101,11 @@ export function SOListPage() {
               <Zap className="h-4 w-4" /> Crear Wave ({selected.length})
             </Button>
           )}
-          <Button size="sm" variant={selected.length > 0 ? 'secondary' : 'primary'}>
+          <Button
+            size="sm"
+            variant={selected.length > 0 ? 'secondary' : 'primary'}
+            onClick={() => setCreating(true)}
+          >
             <Plus className="h-4 w-4" /> Nueva SO
           </Button>
         </div>
@@ -117,6 +145,8 @@ export function SOListPage() {
                   && new Date(so.requested_delivery_date) < new Date()
                   && !['shipped', 'delivered', 'cancelled'].includes(so.status)
 
+                const canCancel = !['shipped', 'delivered', 'cancelled'].includes(so.status)
+
                 return (
                   <Tr key={so.id} className={isOverdue ? 'bg-red-50/40' : ''}>
                     <Td>
@@ -141,15 +171,26 @@ export function SOListPage() {
                     </Td>
                     <Td className="font-medium">{fmt.currency(so.total_amount, so.currency)}</Td>
                     <Td>
-                      {so.status === 'draft' && (
-                        <button
-                          onClick={() => confirmMut.mutate(so.id)}
-                          title="Confirmar SO"
-                          className="text-green-600 hover:text-green-800 transition-colors"
-                        >
-                          <CheckCircle className="h-4 w-4" />
-                        </button>
-                      )}
+                      <div className="flex gap-1">
+                        {so.status === 'draft' && (
+                          <button
+                            onClick={() => confirmMut.mutate(so.id)}
+                            title="Confirmar SO"
+                            className="text-green-600 hover:text-green-800 transition-colors"
+                          >
+                            <CheckCircle className="h-4 w-4" />
+                          </button>
+                        )}
+                        {canCancel && (
+                          <button
+                            onClick={() => openCancel(so)}
+                            title="Cancelar SO"
+                            className="text-red-400 hover:text-red-700 transition-colors"
+                          >
+                            <XCircle className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
                     </Td>
                   </Tr>
                 )
@@ -173,6 +214,41 @@ export function SOListPage() {
           </div>
         )}
       </Card>
+
+      <SOFormModal open={creating} onClose={() => setCreating(false)} />
+
+      {/* Modal de cancelación */}
+      <Modal
+        open={!!cancelTarget}
+        onClose={() => { setCancelTarget(null); setCancelReason('') }}
+        title={`Cancelar SO ${cancelTarget?.so_number ?? ''}`}
+        description="Esta acción liberará las reservas de stock asociadas. Indica el motivo."
+        footer={
+          <>
+            <Button variant="secondary" size="sm"
+              onClick={() => { setCancelTarget(null); setCancelReason('') }}>
+              Volver
+            </Button>
+            <Button
+              size="sm"
+              variant="danger"
+              disabled={cancelReason.length < 5}
+              loading={cancelMut.isPending}
+              onClick={() => cancelMut.mutate({ id: cancelTarget!.id, reason: cancelReason })}
+            >
+              Confirmar cancelación
+            </Button>
+          </>
+        }
+      >
+        <Input
+          label="Motivo de cancelación"
+          value={cancelReason}
+          onChange={e => setCancelReason(e.target.value)}
+          placeholder="Ej: Cliente desistió, error en pedido… (mín. 5 caracteres)"
+          error={cancelReason.length > 0 && cancelReason.length < 5 ? 'Mínimo 5 caracteres' : undefined}
+        />
+      </Modal>
     </div>
   )
 }

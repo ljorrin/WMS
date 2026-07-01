@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, CheckCircle, PlayCircle, Trash2 } from 'lucide-react'
 import { inventoryApi, warehouseApi } from '@/api/endpoints'
+import { useReasonCodes } from '@/hooks/useReasonCodes'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -11,8 +12,6 @@ import { Table, Thead, Tbody, Tr, Th, Td, EmptyRow } from '@/components/ui/Table
 import { Pagination } from '@/components/ui/Pagination'
 import { fmt } from '@/utils/format'
 import toast from 'react-hot-toast'
-
-const REASON_CODES = ['DAMAGE', 'EXPIRED', 'COUNT_ERROR', 'THEFT', 'FOUND', 'OTHER']
 const PAGE_SIZE = 20
 
 interface DraftLine {
@@ -28,6 +27,7 @@ export function AdjustmentsPage() {
   const [page, setPage] = useState(1)
   const [open, setOpen] = useState(false)
   const qc = useQueryClient()
+  const { all: REASON_CODES } = useReasonCodes()
 
   const { data, isLoading } = useQuery({
     queryKey: ['adjustments', page],
@@ -43,7 +43,7 @@ export function AdjustmentsPage() {
   // Form state
   const [warehouseId, setWarehouseId] = useState('')
   const [reason, setReason] = useState('')
-  const [reasonCode, setReasonCode] = useState('COUNT_ERROR')
+  const [reasonCode, setReasonCode] = useState(REASON_CODES[2]?.code ?? 'COUNT_ERROR')
   const [notes, setNotes] = useState('')
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()])
 
@@ -182,7 +182,9 @@ export function AdjustmentsPage() {
               <label className="text-sm font-medium text-gray-700">Código de razón</label>
               <select value={reasonCode} onChange={e => setReasonCode(e.target.value)}
                 className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm">
-                {REASON_CODES.map(c => <option key={c} value={c}>{c}</option>)}
+                {REASON_CODES.map(rc => (
+                  <option key={rc.code} value={rc.code}>{rc.code} — {rc.label}</option>
+                ))}
               </select>
             </div>
           </div>

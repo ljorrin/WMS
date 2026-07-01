@@ -39,6 +39,11 @@ export const healthApi = {
   check: () => api.get('/health').then(r => r.data),
 }
 
+// ── INTEGRATIONS ──────────────────────────────────────
+export const integrationsApi = {
+  getStatus: () => api.get<Record<string, { configured: boolean, missing: string[], extra?: any }>>('/integrations/status').then(r => r.data),
+}
+
 // ── WAREHOUSES ────────────────────────────────────────
 export const warehouseApi = {
   list: (params?: Record<string, unknown>) =>

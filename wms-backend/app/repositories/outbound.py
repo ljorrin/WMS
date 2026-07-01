@@ -393,7 +393,7 @@ class PickingTaskRepository:
                     Product.name.label("product_name"),
                     LocFrom.code.label("from_location_code"),
                     LocTo.code.label("to_location_code"),
-                    User.full_name.label("assigned_to_name")
+                    (User.first_name + " " + User.last_name).label("assigned_to_name")
                 )
                 .join(Product, PickingTask.product_id == Product.id)
                 .outerjoin(LocFrom, PickingTask.from_location_id == LocFrom.id)
@@ -598,7 +598,7 @@ class PackTaskRepository:
                 select(
                     PackTask,
                     SalesOrder.so_number.label("so_number"),
-                    User.full_name.label("assigned_to_name")
+                    (User.first_name + " " + User.last_name).label("assigned_to_name")
                 )
                 .join(SalesOrder, PackTask.so_id == SalesOrder.id)
                 .outerjoin(User, PackTask.assigned_to_id == User.id)

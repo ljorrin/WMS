@@ -99,6 +99,7 @@ services:
       - SECRET_KEY=${SECRET_KEY:-change_me_in_production_use_32_chars_min}
       - ENVIRONMENT=development
       - DEBUG=true
+      - PYTHONPATH=/app
     ports:
       - "8000:8000"
     volumes:
@@ -125,9 +126,11 @@ services:
     command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4 -Q default,high_priority,low_priority
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wms_user}:${POSTGRES_PASSWORD:-wms_secret}@postgres:5432/${POSTGRES_DB:-wms_db}
+      - DATABASE_SYNC_URL=postgresql+psycopg2://${POSTGRES_USER:-wms_user}:${POSTGRES_PASSWORD:-wms_secret}@postgres:5432/${POSTGRES_DB:-wms_db}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-change_me_in_production_use_32_chars_min}
       - ENVIRONMENT=development
+      - PYTHONPATH=/app
     volumes:
       - .:/app
     depends_on:
@@ -146,8 +149,12 @@ services:
     restart: unless-stopped
     command: celery -A app.tasks.celery_app beat --loglevel=info --scheduler celery.beat:PersistentScheduler
     environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-wms_user}:${POSTGRES_PASSWORD:-wms_secret}@postgres:5432/${POSTGRES_DB:-wms_db}
+      - DATABASE_SYNC_URL=postgresql+psycopg2://${POSTGRES_USER:-wms_user}:${POSTGRES_PASSWORD:-wms_secret}@postgres:5432/${POSTGRES_DB:-wms_db}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-redis_secret}@redis:6379/0
+      - SECRET_KEY=${SECRET_KEY:-change_me_in_production_use_32_chars_min}
       - ENVIRONMENT=development
+      - PYTHONPATH=/app
     volumes:
       - .:/app
     depends_on:

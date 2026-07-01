@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Package, TruckIcon, SendHorizonal,
   BarChart3, Settings, LogOut, ChevronDown, Warehouse,
   ClipboardList, Boxes, Route, PackageCheck, Ship,
-  RefreshCw, AlertCircle, ScanLine,
+  RefreshCw, AlertCircle, ScanLine, Database, Users, MapPin,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
@@ -42,6 +42,13 @@ const navItems: NavItem[] = [
       { label: 'Empaque', icon: PackageCheck, href: '/outbound/packing' },
       { label: 'Envíos', icon: Ship, href: '/outbound/shipments' },
       { label: 'Devoluciones', icon: RefreshCw, href: '/outbound/returns' },
+    ],
+  },
+  {
+    label: 'Maestros', icon: Database, children: [
+      { label: 'Productos', icon: Package, href: '/master/products' },
+      { label: 'Proveedores', icon: Users, href: '/master/suppliers' },
+      { label: 'Ubicaciones', icon: MapPin, href: '/master/locations' },
     ],
   },
   { label: 'Configuración', icon: Settings, href: '/settings' },

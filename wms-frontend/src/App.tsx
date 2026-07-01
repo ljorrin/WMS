@@ -23,6 +23,8 @@ import { PickingPage } from '@/pages/outbound/PickingPage'
 import { PackingPage } from '@/pages/outbound/PackingPage'
 import { ShipmentsPage } from '@/pages/outbound/ShipmentsPage'
 import { ReturnsPage } from '@/pages/outbound/ReturnsPage'
+// Master Data
+import { MasterDataPage } from '@/pages/master/MasterDataPage'
 // Settings
 import { SettingsPage } from '@/pages/settings/SettingsPage'
 
@@ -82,6 +84,13 @@ export default function App() {
               <Route path="packing" element={<PackingPage />} />
               <Route path="shipments" element={<ShipmentsPage />} />
               <Route path="returns" element={<ReturnsPage />} />
+            </Route>
+
+            {/* Master Data */}
+            <Route path="master">
+              <Route path="products" element={<MasterDataPage />} />
+              <Route path="suppliers" element={<MasterDataPage />} />
+              <Route path="locations" element={<MasterDataPage />} />
             </Route>
 
             {/* Settings */}
