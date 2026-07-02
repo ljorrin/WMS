@@ -16,12 +16,12 @@ services:
   nginx:
     image: nginx:1.25-alpine
     <<: *common
+    # Detrás de Laragon (Windows) como reverse proxy + SSL.
+    # Solo publicamos un puerto interno HTTP; Laragon reenvía el 443 aquí.
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
     volumes:
-      - ./nginx/nginx.prod.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./nginx/nginx.laragon.conf:/etc/nginx/nginx.conf:ro
       - ./wms-frontend/dist:/usr/share/nginx/html:ro
       - nginx_logs:/var/log/nginx
     depends_on:
