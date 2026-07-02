@@ -3,7 +3,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import {
   User as UserIcon, KeyRound, Warehouse as WarehouseIcon,
   ShieldCheck, Plug, CheckCircle2, AlertCircle, Building2, BookOpen,
-  Plus, Trash2, Lock,
+  Plus, Trash2, Lock, Smartphone,
 } from 'lucide-react'
 import { authApi, warehouseApi, integrationsApi } from '@/api/endpoints'
 import { useAuthStore } from '@/store/authStore'
@@ -51,6 +51,40 @@ export function SettingsPage() {
     onError: () => toast.error('No se pudo actualizar la contraseña'),
   })
   const pwdValid = currentPwd.length >= 1 && newPwd.length >= 8 && newPwd === confirmPwd
+
+  // -- MFA / 2FA --
+  const { data: me, refetch: refetchMe } = useQuery({
+    queryKey: ['me', 'settings'],
+    queryFn: () => authApi.me(),
+  })
+  const [enrollData, setEnrollData] = useState<{ secret: string; otpauth_uri: string } | null>(null)
+  const [mfaCode, setMfaCode] = useState('')
+
+  const enrollMut = useMutation({
+    mutationFn: () => authApi.mfaEnroll(),
+    onSuccess: (res) => setEnrollData(res),
+    onError: () => toast.error('No se pudo iniciar el enrolamiento MFA'),
+  })
+
+  const verifyMut = useMutation({
+    mutationFn: () => authApi.mfaVerify(mfaCode),
+    onSuccess: () => {
+      toast.success('MFA activado correctamente')
+      setEnrollData(null); setMfaCode('')
+      refetchMe()
+    },
+    onError: () => toast.error('Código MFA inválido'),
+  })
+
+  const disableMut = useMutation({
+    mutationFn: () => authApi.mfaDisable(mfaCode),
+    onSuccess: () => {
+      toast.success('MFA desactivado')
+      setMfaCode('')
+      refetchMe()
+    },
+    onError: () => toast.error('Código MFA inválido'),
+  })
 
   // -- Warehouses --
   const { data: warehouses, isLoading: whLoading } = useQuery({
@@ -186,6 +220,65 @@ export function SettingsPage() {
                   </Button>
                 </div>
               </div>
+            </Card>
+
+            <Card className="lg:col-span-2">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <Smartphone className="h-5 w-5 text-gray-400" /> Autenticación de Dos Factores (MFA)
+                </CardTitle>
+              </CardHeader>
+              {me?.mfa_enabled ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600 flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" /> MFA está activo en tu cuenta.
+                  </p>
+                  <div className="max-w-xs">
+                    <Input label="Código TOTP (para desactivar)" value={mfaCode}
+                      onChange={e => setMfaCode(e.target.value)} placeholder="123456" />
+                  </div>
+                  <Button size="sm" variant="secondary" disabled={mfaCode.length < 6}
+                    loading={disableMut.isPending} onClick={() => disableMut.mutate()}>
+                    Desactivar MFA
+                  </Button>
+                </div>
+              ) : enrollData ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600">
+                    Escanea este código en tu app de autenticación (Google Authenticator, Authy, etc.)
+                    o ingresa el secreto manualmente, luego confirma con el código generado.
+                  </p>
+                  <div className="text-xs font-mono bg-gray-50 border border-gray-200 rounded-lg p-3 break-all">
+                    {enrollData.otpauth_uri}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    Secreto: <span className="font-mono">{enrollData.secret}</span>
+                  </div>
+                  <div className="max-w-xs">
+                    <Input label="Código de verificación" value={mfaCode}
+                      onChange={e => setMfaCode(e.target.value)} placeholder="123456" />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button size="sm" disabled={mfaCode.length < 6} loading={verifyMut.isPending}
+                      onClick={() => verifyMut.mutate()}>
+                      Confirmar y activar
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => { setEnrollData(null); setMfaCode('') }}>
+                      Cancelar
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-600 flex items-center gap-2">
+                    <AlertCircle className="h-4 w-4 text-amber-500" /> MFA no está activado. Se recomienda
+                    activarlo para proteger tu cuenta.
+                  </p>
+                  <Button size="sm" loading={enrollMut.isPending} onClick={() => enrollMut.mutate()}>
+                    Activar MFA
+                  </Button>
+                </div>
+              )}
             </Card>
           </div>
         )}

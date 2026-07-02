@@ -321,6 +321,10 @@ class InventoryLevel(WMSTenantBase):
         Numeric(15, 4), nullable=False, default=0,
         comment="Cantidad reservada para ordenes"
     )
+    quantity_in_transit: Mapped[Decimal] = mapped_column(
+        Numeric(15, 4), nullable=False, default=0,
+        comment="Cantidad en movimiento entre bodegas/ubicaciones"
+    )
     quantity_in_picking: Mapped[Decimal] = mapped_column(
         Numeric(15, 4), nullable=False, default=0,
         comment="Cantidad actualmente en proceso de picking"
@@ -601,6 +605,9 @@ class CycleCount(WMSTenantBase):
         String(30), nullable=False,
         comment="Numero de conteo (ej: CC-2026-001)"
     )
+    name: Mapped[Optional[str]] = mapped_column(
+        String(200), comment="Nombre descriptivo del conteo"
+    )
     count_type: Mapped[str] = mapped_column(
         String(30), nullable=False, default="cyclic",
         comment="cyclic | full_physical | blind | discrepancy | abc_rotation"
@@ -663,6 +670,18 @@ class CycleCount(WMSTenantBase):
         Index("ix_cycle_counts_warehouse_status", "warehouse_id", "status"),
         Index("ix_cycle_counts_tenant", "tenant_id"),
     )
+
+    @property
+    def total_lines(self) -> int:
+        return len(self.lines)
+
+    @property
+    def counted_lines(self) -> int:
+        return sum(1 for l in self.lines if l.counted_quantity is not None)
+
+    @property
+    def discrepancy_lines(self) -> int:
+        return sum(1 for l in self.lines if l.variance not in (None, Decimal("0")))
 
 
 class CycleCountLine(WMSTenantBase):

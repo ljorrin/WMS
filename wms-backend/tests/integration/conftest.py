@@ -25,8 +25,9 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 
 from app.core.config import settings
-from app.db.session import WMSBase, get_db
+from app.db.session import get_db
 from app.main import create_application
+from app.models.base import WMSBase
 
 # ── Motor de BD para tests ────────────────────────────────────────────────────
 

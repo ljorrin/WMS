@@ -72,7 +72,7 @@ services:
       dockerfile: Dockerfile
       target: production
     <<: *common
-    command: celery -A app.celery_app worker --loglevel=info --concurrency=4
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=4
     env_file: ./wms-backend/.env.prod
     environment:
       ENVIRONMENT: production
@@ -92,7 +92,7 @@ services:
       dockerfile: Dockerfile
       target: production
     <<: *common
-    command: celery -A app.celery_app beat --loglevel=info
+    command: celery -A app.tasks.celery_app beat --loglevel=info
     env_file: ./wms-backend/.env.prod
     environment:
       ENVIRONMENT: production

@@ -185,8 +185,8 @@ class Tenant(WMSBase):
     users: Mapped[List["User"]] = relationship(back_populates="tenant", lazy="select")
 
     __table_args__ = (
-        Index("ix_tenants_slug", "slug"),
-        Index("ix_tenants_ruc", "ruc"),
+        # slug y ruc ya tienen index=True (generan ix_tenants_slug/ix_tenants_ruc);
+        # no duplicar esos índices aquí.
         Index("ix_tenants_status", "status"),
     )
 

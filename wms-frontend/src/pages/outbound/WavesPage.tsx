@@ -13,7 +13,7 @@ import { cn } from '@/utils/cn'
 import toast from 'react-hot-toast'
 
 const PAGE_SIZE = 20
-const PICKING_METHODS = ['discrete', 'batch', 'zone', 'cluster', 'wave']
+const PICKING_METHODS = ['discrete', 'batch', 'zone', 'cluster']
 
 export function WavesPage() {
   const [page, setPage] = useState(1)

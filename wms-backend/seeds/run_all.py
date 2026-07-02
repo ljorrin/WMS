@@ -58,11 +58,18 @@ SYSTEM_PERMISSIONS = [
     ("inbound:rtv:manage",       "Gestionar Devolución a Proveedor","inbound"),
 
     # ── Outbound ──
-    ("outbound:order:read",      "Ver Órdenes de Salida",    "outbound"),
-    ("outbound:order:create",    "Crear Orden de Salida",    "outbound"),
-    ("outbound:picking:execute", "Ejecutar Picking",         "outbound"),
-    ("outbound:packing:execute", "Ejecutar Packing",         "outbound"),
-    ("outbound:shipping:approve", "Aprobar Despacho",        "outbound"),
+    ("outbound:so:read",         "Ver Órdenes de Venta",         "outbound"),
+    ("outbound:so:create",       "Crear Orden de Venta",         "outbound"),
+    ("outbound:so:confirm",      "Confirmar Orden de Venta",     "outbound"),
+    ("outbound:so:cancel",       "Cancelar Orden de Venta",      "outbound"),
+    ("outbound:wave:create",     "Crear/Ver Waves de Picking",   "outbound"),
+    ("outbound:wave:manage",     "Liberar Wave de Picking",      "outbound"),
+    ("outbound:picking:manage",  "Gestionar Tareas de Picking",  "outbound"),
+    ("outbound:picking:execute", "Ejecutar Picking (RF)",        "outbound"),
+    ("outbound:packing:manage",  "Gestionar Tareas de Empaque",  "outbound"),
+    ("outbound:shipping:manage", "Gestionar Envíos y Despacho",  "outbound"),
+    ("outbound:rma:create",      "Crear/Ver Devolución (RMA)",   "outbound"),
+    ("outbound:rma:manage",      "Gestionar Devolución (RMA)",   "outbound"),
 
     # ── Master Data ──
     ("master:product:read",      "Ver Productos",            "master"),
@@ -80,9 +87,10 @@ SYSTEM_PERMISSIONS = [
     ("admin:reports:export",     "Exportar Reportes",        "admin"),
 
     # ── AI ──
-    ("ai:insights:read",         "Ver Insights de IA",       "ai"),
-    ("ai:forecast:read",         "Ver Pronósticos",          "ai"),
-    ("ai:optimization:run",      "Ejecutar Optimizaciones",  "ai"),
+    ("ai:forecast:create",       "Generar Pronósticos y Alertas","ai"),
+    ("ai:optimize:create",       "Optimizar Rutas de Picking",   "ai"),
+    ("ai:anomaly:manage",        "Gestionar Anomalías",          "ai"),
+    ("ai:assistant:use",         "Usar Asistente WMS",           "ai"),
 ]
 
 
@@ -104,8 +112,11 @@ SYSTEM_ROLES = {
             "inbound:grn:create", "inbound:grn:read", "inbound:grn:confirm",
             "inbound:qc:create", "inbound:qc:resolve",
             "inbound:putaway:manage", "inbound:rtv:create", "inbound:rtv:manage",
-            "outbound:order:read", "outbound:order:create", "outbound:picking:execute",
-            "outbound:packing:execute", "outbound:shipping:approve",
+            "outbound:so:read", "outbound:so:create", "outbound:so:confirm", "outbound:so:cancel",
+            "outbound:wave:create", "outbound:wave:manage",
+            "outbound:picking:manage", "outbound:picking:execute",
+            "outbound:packing:manage", "outbound:shipping:manage",
+            "outbound:rma:create", "outbound:rma:manage",
             "master:product:read", "admin:audit:read", "admin:reports:export",
         ],
     },
@@ -114,7 +125,8 @@ SYSTEM_ROLES = {
         "permissions": [
             "inventory:read",
             "inbound:po:read", "inbound:grn:create", "inbound:grn:read", "inbound:putaway:manage",
-            "outbound:order:read", "outbound:picking:execute", "outbound:packing:execute",
+            "outbound:so:read", "outbound:wave:create",
+            "outbound:picking:manage", "outbound:picking:execute", "outbound:packing:manage",
             "master:product:read",
         ],
     },
@@ -122,7 +134,7 @@ SYSTEM_ROLES = {
         "description": "Solo lectura y acceso a reportes. Ideal para auditores.",
         "permissions": [
             "inventory:read", "inventory:cycle_count:manage",
-            "inbound:po:read", "outbound:order:read",
+            "inbound:po:read", "outbound:so:read",
             "master:product:read", "admin:audit:read", "admin:reports:export",
         ],
     },
@@ -130,7 +142,7 @@ SYSTEM_ROLES = {
         "description": "Acceso a módulos de IA, pronósticos y optimización.",
         "permissions": [
             "inventory:read", "master:product:read",
-            "ai:insights:read", "ai:forecast:read", "ai:optimization:run",
+            "ai:forecast:create", "ai:optimize:create", "ai:anomaly:manage", "ai:assistant:use",
             "admin:reports:export",
         ],
     },

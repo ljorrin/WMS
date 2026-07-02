@@ -151,7 +151,7 @@ async def test_inventory_adjustment_lifecycle(seed, inventory_level):
         await seed.db.execute(
             select(func.count(InventoryMovement.id)).where(
                 InventoryMovement.tenant_id == seed.tenant_id,
-                InventoryMovement.reference_id == adj.id,
+                InventoryMovement.source_document_id == adj.id,
             )
         )
     ).scalar_one()

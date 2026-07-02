@@ -281,11 +281,19 @@ class InboundService:
                     product_temp=str(product_temp),
                 )
 
+        # Derivar proveedor de la PO referenciada (recepción ciega = sin PO = sin proveedor)
+        supplier_id = None
+        if po_id:
+            po = await self.po_repo.get_by_id(po_id)
+            if po:
+                supplier_id = po.supplier_id
+
         # Añadir campos calculados al header
         grn_data = dict(
             warehouse_id=warehouse_id,
             asn_id=asn_id,
             po_id=po_id,
+            supplier_id=supplier_id,
             status=GRNStatus.IN_PROGRESS,
             requires_qc=requires_qc,
             **kwargs,
@@ -418,6 +426,19 @@ class InboundService:
         )
 
         grn = await self.grn_repo.get_by_id(qi.grn_id)
+
+        # Propagar resultados de línea QC → líneas del GRN, para que el cálculo de
+        # putaway (recibido - rechazado) refleje lo que realmente aprobó/rechazó QC.
+        if grn and qi.lines:
+            for qi_line in qi.lines:
+                if qi_line.grn_line_id:
+                    await self.grn_repo.update_line_qc_result(
+                        qi_line.grn_line_id,
+                        quantity_accepted=qi_line.quantity_approved,
+                        quantity_rejected=qi_line.quantity_rejected,
+                    )
+            grn = await self.grn_repo.get_by_id(qi.grn_id)
+
         result: dict = {"qi_id": str(qi_id), "approved": approved}
 
         if approved:
@@ -434,10 +455,16 @@ class InboundService:
             await self.grn_repo.update_status(qi.grn_id, GRNStatus.REJECTED)
 
             if return_to_vendor and grn:
+                if not grn.supplier_id:
+                    raise InboundServiceError(
+                        "No se puede generar RTV automático: el GRN no tiene proveedor "
+                        "asociado (recepción ciega sin OC). Cree el RTV manualmente "
+                        "indicando el proveedor."
+                    )
                 rtv = await self.rtv_repo.create(
                     data=dict(
                         grn_id=qi.grn_id,
-                        supplier_id=getattr(grn, "supplier_id", None),
+                        supplier_id=grn.supplier_id,
                         warehouse_id=grn.warehouse_id,
                         reason=disposition_notes or "Rechazado por control de calidad.",
                         credit_expected=Decimal("0"),

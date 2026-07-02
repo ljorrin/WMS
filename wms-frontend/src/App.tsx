@@ -11,11 +11,14 @@ import { StockPage } from '@/pages/inventory/StockPage'
 import { MovementsPage } from '@/pages/inventory/MovementsPage'
 import { AdjustmentsPage } from '@/pages/inventory/AdjustmentsPage'
 import { ExpiryPage } from '@/pages/inventory/ExpiryPage'
+import { CycleCountsPage } from '@/pages/inventory/CycleCountsPage'
+import { TransfersPage } from '@/pages/inventory/TransfersPage'
 // Inbound
 import { POListPage } from '@/pages/inbound/POListPage'
 import { GRNListPage } from '@/pages/inbound/GRNListPage'
 import { QualityPage } from '@/pages/inbound/QualityPage'
 import { PutawayPage } from '@/pages/inbound/PutawayPage'
+import { RTVListPage } from '@/pages/inbound/RTVListPage'
 // Outbound
 import { SOListPage } from '@/pages/outbound/SOListPage'
 import { WavesPage } from '@/pages/outbound/WavesPage'
@@ -66,6 +69,8 @@ export default function App() {
               <Route path="movements" element={<MovementsPage />} />
               <Route path="adjustments" element={<AdjustmentsPage />} />
               <Route path="expiry" element={<ExpiryPage />} />
+              <Route path="cycle-counts" element={<CycleCountsPage />} />
+              <Route path="transfers" element={<TransfersPage />} />
             </Route>
 
             {/* Inbound */}
@@ -74,6 +79,7 @@ export default function App() {
               <Route path="grns" element={<GRNListPage />} />
               <Route path="quality" element={<QualityPage />} />
               <Route path="putaway" element={<PutawayPage />} />
+              <Route path="rtv" element={<RTVListPage />} />
             </Route>
 
             {/* Outbound */}

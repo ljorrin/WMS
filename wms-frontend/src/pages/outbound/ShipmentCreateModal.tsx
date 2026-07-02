@@ -9,9 +9,9 @@ import type { SalesOrder } from '@/types'
 import toast from 'react-hot-toast'
 
 const CARRIER_TYPES = [
-  { value: 'ground', label: 'Terrestre' },
-  { value: 'air', label: 'Aéreo' },
-  { value: 'sea', label: 'Marítimo' },
+  { value: 'own_fleet', label: 'Flota propia' },
+  { value: 'third_party', label: 'Transportista externo' },
+  { value: 'customer_pickup', label: 'Recogida por cliente' },
   { value: 'courier', label: 'Mensajería' },
 ]
 
@@ -33,7 +33,7 @@ export function ShipmentCreateModal({ open, onClose }: Props) {
   const [soId, setSoId] = useState('')
   const [soLabel, setSoLabel] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
-  const [carrierType, setCarrierType] = useState('ground')
+  const [carrierType, setCarrierType] = useState('third_party')
   const [carrierName, setCarrierName] = useState('')
   const [scheduledPickup, setScheduledPickup] = useState(nowLocal())
   const [estimatedDelivery, setEstimatedDelivery] = useState('')

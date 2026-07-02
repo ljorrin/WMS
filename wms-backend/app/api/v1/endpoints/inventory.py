@@ -312,7 +312,7 @@ async def get_kardex(
         kardex.append({
             "date": m.occurred_at.isoformat(),
             "movement_type": m.movement_type.value,
-            "reference": m.reference_number,
+            "reference": m.source_document_number,
             "entradas": str(entradas),
             "salidas": str(salidas),
             "saldo": str(saldo),
@@ -646,6 +646,46 @@ async def create_reservation(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": e.code, "message": e.message},
         )
+
+
+@router.get(
+    "/reservations",
+    summary="Listar reservas de inventario",
+)
+async def list_reservations(
+    current_user: CurrentUserDep,
+    db: DBDep,
+    pagination: PaginationDep,
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+    is_active: Optional[bool] = Query(None),
+) -> dict:
+    svc = get_inventory_service(current_user, db)
+    items, total = await svc.reservations.list(
+        current_user.tenant_id, warehouse_id=warehouse_id, is_active=is_active,
+        offset=pagination.offset, limit=pagination.limit,
+    )
+    return {
+        "items": [
+            {
+                "id": str(r.id),
+                "warehouse_id": str(r.warehouse_id),
+                "product_id": str(r.product_id),
+                "quantity": str(r.quantity),
+                "reservation_type": r.reservation_type,
+                "reference_type": r.source_document_type,
+                "reference_id": str(r.source_document_id),
+                "reference_number": r.source_document_number,
+                "batch_id": str(r.batch_id) if r.batch_id else None,
+                "location_id": str(r.location_id) if r.location_id else None,
+                "expires_at": r.expires_at.isoformat() if r.expires_at else None,
+                "created_at": r.reserved_at.isoformat() if r.reserved_at else None,
+            }
+            for r in items
+        ],
+        "total": total,
+        "page": pagination.page,
+        "page_size": pagination.page_size,
+    }
 
 
 @router.delete(

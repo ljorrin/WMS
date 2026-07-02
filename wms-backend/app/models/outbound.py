@@ -207,7 +207,7 @@ class SalesOrderLine(WMSBase):
     so_id               = Column(PG_UUID(as_uuid=True), ForeignKey("sales_orders.id"), nullable=False)
     line_number         = Column(Integer, nullable=False)
     product_id          = Column(PG_UUID(as_uuid=True), nullable=False)
-    uom_id              = Column(PG_UUID(as_uuid=True), nullable=False)
+    uom_id              = Column(PG_UUID(as_uuid=True), nullable=True)
     description         = Column(String(500))
 
     # Cantidades
@@ -295,7 +295,7 @@ class PickingTask(WMSBase):
 
     # Producto y cantidades
     product_id          = Column(PG_UUID(as_uuid=True), nullable=False)
-    uom_id              = Column(PG_UUID(as_uuid=True), nullable=False)
+    uom_id              = Column(PG_UUID(as_uuid=True), nullable=True)
     batch_id            = Column(PG_UUID(as_uuid=True), nullable=True)
     quantity_requested  = Column(Numeric(18, 4), nullable=False)
     quantity_picked     = Column(Numeric(18, 4), default=Decimal("0"))

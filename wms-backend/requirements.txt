@@ -10,6 +10,7 @@ sqlalchemy==2.0.36
 alembic==1.14.0
 asyncpg==0.30.0          # async PostgreSQL driver
 psycopg2-binary==2.9.10  # sync driver for Alembic CLI
+aiosqlite==0.20.0        # SQLite async para tests/integration
 
 # Validation & Serialization
 pydantic[email]==2.10.2
@@ -19,6 +20,7 @@ email-validator==2.2.0
 # Authentication & Security
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1            # pin: passlib 1.7.4 es incompatible con bcrypt>=4.1 (falta _bcrypt.__about__)
 python-multipart==0.0.12
 
 # Cache & Queue

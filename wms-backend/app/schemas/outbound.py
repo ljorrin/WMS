@@ -32,7 +32,7 @@ from app.models.outbound import (
 
 class SalesOrderLineCreate(BaseModel):
     product_id: UUID
-    uom_id: UUID
+    uom_id: Optional[UUID] = None
     description: Optional[str] = Field(None, max_length=500)
     quantity_ordered: Decimal = Field(..., gt=0, decimal_places=4)
     unit_price: Decimal = Field(Decimal("0"), ge=0, decimal_places=4)
@@ -210,7 +210,7 @@ class PickingTaskResponse(BaseModel):
     so_id: UUID
     so_line_id: UUID
     product_id: UUID
-    uom_id: UUID
+    uom_id: Optional[UUID] = None
     batch_id: Optional[UUID]
     quantity_requested: Decimal
     quantity_picked: Decimal

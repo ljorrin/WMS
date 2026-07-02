@@ -118,7 +118,8 @@ class InventoryService:
         if not product:
             raise InventoryServiceError(f"Producto {product_id} no encontrado.")
 
-        # Crear o recuperar lote
+        # Crear o recuperar lote (las cantidades del lote viven en InventoryLevel,
+        # no en Batch — Batch solo describe el lote: fechas, origen, estado QC).
         batch_id = None
         if lot_number:
             batch = await self.batches.get_by_lot_number(
@@ -129,18 +130,11 @@ class InventoryService:
                     tenant_id=self.tenant_id,
                     product_id=product_id,
                     warehouse_id=warehouse_id,
-                    lot_number=lot_number,
+                    batch_number=lot_number,
                     expiry_date=expiry_date,
                     manufacture_date=manufacture_date,
-                    supplier_lot=supplier_lot,
-                    quantity_received=quantity,
-                    quantity_available=quantity,
-                    status="active",
+                    received_date=datetime.now(timezone.utc).date(),
                 )
-            else:
-                # Actualizar batch existente
-                batch.quantity_received += quantity
-                batch.quantity_available += quantity
             batch_id = batch.id
 
         # Actualizar nivel de stock
@@ -525,7 +519,6 @@ class InventoryService:
             product_id=body.product_id,
             quantity=body.quantity,
             reservation_type=body.reservation_type,
-            status="active",
             reference_type=body.reference_type,
             reference_id=body.reference_id,
             reference_number=body.reference_number,
@@ -558,7 +551,7 @@ class InventoryService:
             select(InventoryReservation).where(
                 InventoryReservation.id == reservation_id,
                 InventoryReservation.tenant_id == self.tenant_id,
-                InventoryReservation.status == "active",
+                InventoryReservation.is_active.is_(True),
             )
         )
         reservation = result.scalar_one_or_none()
@@ -578,8 +571,9 @@ class InventoryService:
                 delta_reserved=-qty,
             )
 
-        reservation.status = "cancelled"
-        reservation.cancelled_at = datetime.now(timezone.utc)
+        reservation.is_active = False
+        reservation.released_at = datetime.now(timezone.utc)
+        reservation.released_by = self.user_id
 
     # ── Conteo Cíclico ────────────────────────────────────────────────────────
 
@@ -593,7 +587,7 @@ class InventoryService:
             warehouse_id=body.warehouse_id,
             name=body.name,
             count_type=body.count_type,
-            created_by_id=self.user_id,
+            created_by=self.user_id,
             scheduled_date=body.scheduled_date,
             notes=body.notes,
         )
@@ -622,20 +616,21 @@ class InventoryService:
                 location_id=level.location_id,
                 product_id=level.product_id,
                 batch_id=level.batch_id,
-                lot_number=None,
-                quantity_system=level.quantity_on_hand,
-                status="pending",
+                system_quantity=level.quantity_on_hand,
             )
 
         cc.status = "in_progress"
         cc.started_at = datetime.now(timezone.utc)
+        await self.db.flush()
 
         logger.info(
             "Cycle count created",
             cc_id=str(cc.id),
             lines=len(levels),
         )
-        return cc
+        # Recargar con las líneas ya asociadas (selectinload) para que el
+        # endpoint pueda serializar `cc.lines` sin lazy-load fuera de contexto async.
+        return await self.cycle_counts.get_by_id(cc.id, self.tenant_id)
 
     async def record_cycle_count_result(
         self,
@@ -662,16 +657,16 @@ class InventoryService:
             if not line:
                 continue
 
-            line.quantity_counted = result.quantity_counted
+            line.counted_quantity = result.quantity_counted
             line.counted_at = datetime.now(timezone.utc)
             line.counted_by = result.counter_id or self.user_id
             line.notes = result.notes
 
             # Calcular varianza
-            if line.quantity_system is not None:
-                line.variance = result.quantity_counted - line.quantity_system
-                if line.quantity_system > 0:
-                    line.variance_pct = (abs(line.variance) / line.quantity_system) * 100
+            if line.system_quantity is not None:
+                line.variance = result.quantity_counted - line.system_quantity
+                if line.system_quantity > 0:
+                    line.variance_pct = (abs(line.variance) / line.system_quantity) * 100
                 line.status = "discrepancy" if abs(line.variance) > 0 else "counted"
             else:
                 line.status = "counted"
@@ -705,8 +700,8 @@ class InventoryService:
                             product_id=line.product_id,
                             location_id=line.location_id,
                             batch_id=line.batch_id,
-                            quantity_system=line.quantity_system or Decimal("0"),
-                            quantity_physical=line.quantity_counted or Decimal("0"),
+                            quantity_system=line.system_quantity or Decimal("0"),
+                            quantity_physical=line.counted_quantity or Decimal("0"),
                         )
                         for line in lines_with_variance
                     ],

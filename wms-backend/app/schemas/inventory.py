@@ -46,7 +46,7 @@ class BatchResponse(WMSSchema):
     tenant_id: uuid.UUID
     product_id: uuid.UUID
     warehouse_id: uuid.UUID
-    lot_number: str = Field(alias="batch_number")
+    lot_number: str = Field(validation_alias="batch_number")
     expiry_date: Optional[date] = None
     manufacture_date: Optional[date] = None
     supplier_lot: Optional[str] = None
@@ -211,15 +211,15 @@ class InventoryMovementResponse(WMSSchema):
     from_location_id: Optional[uuid.UUID] = None
     to_location_id: Optional[uuid.UUID] = None
     batch_id: Optional[uuid.UUID] = None
-    serial_id: Optional[uuid.UUID] = Field(None, alias="serial_number_id")
+    serial_id: Optional[uuid.UUID] = Field(None, validation_alias="serial_number_id")
     lot_number: Optional[str] = None
 
-    reference_type: Optional[str] = Field(None, alias="source_document_type")
-    reference_id: Optional[uuid.UUID] = Field(None, alias="source_document_id")
-    reference_number: Optional[str] = Field(None, alias="source_document_number")
+    reference_type: Optional[str] = Field(None, validation_alias="source_document_type")
+    reference_id: Optional[uuid.UUID] = Field(None, validation_alias="source_document_id")
+    reference_number: Optional[str] = Field(None, validation_alias="source_document_number")
 
     notes: Optional[str] = None
-    user_id: Optional[uuid.UUID] = Field(None, alias="operator_id")
+    user_id: Optional[uuid.UUID] = Field(None, validation_alias="operator_id")
     occurred_at: datetime
 
     # Datos enriquecidos
@@ -359,8 +359,8 @@ class CycleCountLineResponse(WMSSchema):
     product_id: uuid.UUID
     batch_id: Optional[uuid.UUID] = None
     lot_number: Optional[str] = None
-    quantity_system: Optional[Decimal] = None
-    quantity_counted: Optional[Decimal] = None
+    quantity_system: Optional[Decimal] = Field(None, validation_alias="system_quantity")
+    quantity_counted: Optional[Decimal] = Field(None, validation_alias="counted_quantity")
     variance: Optional[Decimal] = None
     variance_pct: Optional[Decimal] = None
     status: str = "pending"   # pending | counted | verified | discrepancy
@@ -379,7 +379,7 @@ class CycleCountResponse(WMSSchema):
     name: str
     count_type: str
     status: str     # draft | in_progress | completed | cancelled
-    scheduled_date: Optional[date] = None
+    scheduled_date: Optional[date] = Field(None, validation_alias="planned_date")
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     notes: Optional[str] = None

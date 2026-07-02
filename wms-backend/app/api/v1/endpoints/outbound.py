@@ -102,7 +102,7 @@ async def create_sales_order(
         **data,
     )
     await db.commit()
-    await db.refresh(so)
+    so = await svc.so_repo.get_by_id(so.id)
     return so
 
 

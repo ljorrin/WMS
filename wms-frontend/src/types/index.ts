@@ -13,6 +13,7 @@ export interface User {
   permissions: string[]
   is_active: boolean
   avatar_url?: string
+  mfa_enabled?: boolean
 }
 
 export interface TokenResponse {
@@ -111,10 +112,10 @@ export interface AdjustmentLine {
 }
 
 // ── Inbound ───────────────────────────────────────────
-export type POStatus = 'draft' | 'confirmed' | 'partially_received' | 'closed' | 'cancelled'
-export type GRNStatus = 'in_progress' | 'confirmed' | 'putaway_in_progress' | 'completed' | 'rejected'
-export type QCStatus = 'pending' | 'in_progress' | 'approved' | 'rejected'
-export type PutawayStatus = 'pending' | 'in_progress' | 'completed' | 'cancelled'
+export type POStatus = 'draft' | 'confirmed' | 'sent' | 'partially_received' | 'received' | 'closed' | 'cancelled'
+export type GRNStatus = 'draft' | 'in_progress' | 'confirmed' | 'putaway_in_progress' | 'completed' | 'rejected' | 'cancelled'
+export type QCStatus = 'pending' | 'in_progress' | 'approved' | 'rejected' | 'partial' | 'cancelled'
+export type PutawayStatus = 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled'
 
 export interface PurchaseOrder {
   id: string
@@ -453,8 +454,7 @@ export interface BatchListResponse {
 }
 
 // ── Quality Inspection (QC) ───────────────────────────
-export type QCStatusType =
-  | 'pending' | 'in_progress' | 'passed' | 'failed' | 'partial' | 'conditionally_released'
+export type QCStatusType = QCStatus
 
 export interface QCLine {
   id: string
@@ -546,4 +546,89 @@ export interface ReturnOrder {
   notes?: string
   created_at: string
   updated_at: string
+}
+
+// ── RTV (Devolución a Proveedor) ──────────────────────
+export type RTVStatus = 'pending' | 'approved' | 'shipped' | 'credit_received' | 'closed' | 'cancelled'
+
+export interface ReturnToVendor {
+  id: string
+  tenant_id: string
+  grn_id?: string
+  supplier_id: string
+  supplier_name?: string
+  warehouse_id: string
+  rtv_number: string
+  status: RTVStatus
+  reason: string
+  notes?: string
+  return_carrier?: string
+  return_tracking?: string
+  shipped_at?: string
+  confirmed_at?: string
+  credit_expected: number
+  credit_received: number
+  currency: string
+  credit_memo_number?: string
+  created_by_id: string
+  created_at: string
+  updated_at: string
+}
+
+// ── Conteo Cíclico ─────────────────────────────────────
+export type CycleCountStatus = 'draft' | 'in_progress' | 'completed' | 'cancelled'
+
+export interface CycleCountLineRow {
+  id: string
+  location_id: string
+  product_id: string
+  batch_id?: string
+  lot_number?: string
+  quantity_system?: number
+  quantity_counted?: number
+  variance?: number
+  variance_pct?: number
+  status: string
+  counted_at?: string
+  counted_by?: string
+  location_code?: string
+  product_code?: string
+  product_name?: string
+}
+
+export interface CycleCount {
+  id: string
+  tenant_id: string
+  warehouse_id: string
+  count_number: string
+  name: string
+  count_type: string
+  status: CycleCountStatus
+  scheduled_date?: string
+  started_at?: string
+  completed_at?: string
+  notes?: string
+  lines: CycleCountLineRow[]
+  total_lines: number
+  counted_lines: number
+  discrepancy_lines: number
+  accuracy_pct?: number
+  created_at: string
+}
+
+// ── Reservas de Inventario ─────────────────────────────
+export interface InventoryReservation {
+  id: string
+  warehouse_id: string
+  product_id: string
+  product_name?: string
+  quantity: number
+  reservation_type: string
+  reference_type: string
+  reference_id: string
+  reference_number: string
+  batch_id?: string
+  location_id?: string
+  expires_at?: string
+  created_at: string
 }

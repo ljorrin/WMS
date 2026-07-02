@@ -12,6 +12,7 @@ import type {
   QualityInspection, PackTask, ReturnOrder,
   ThroughputResponse, InboundThroughputPoint, OutboundThroughputPoint,
   Product, Supplier, LocationLite,
+  ReturnToVendor, CycleCount, InventoryReservation,
 } from '@/types'
 
 interface ListResponse<T> { items: T[]; total: number; page: number; page_size: number }
@@ -32,6 +33,16 @@ export const authApi = {
 
   changePassword: (current_password: string, new_password: string) =>
     api.post('/auth/password/change', { current_password, new_password }),
+
+  // MFA / 2FA (FR-001)
+  mfaEnroll: () =>
+    api.post<{ secret: string; otpauth_uri: string; message: string }>('/auth/mfa/enroll').then(r => r.data),
+
+  mfaVerify: (code: string) =>
+    api.post<{ mfa_enabled: boolean; message: string }>('/auth/mfa/verify', { code }).then(r => r.data),
+
+  mfaDisable: (code: string) =>
+    api.post<{ mfa_enabled: boolean; message: string }>('/auth/mfa/disable', { code }).then(r => r.data),
 }
 
 // ── HEALTH ────────────────────────────────────────────
@@ -123,6 +134,38 @@ export const inventoryApi = {
     api.get<InventoryMetrics>('/inventory/dashboard', {
       params: warehouseId ? { warehouse_id: warehouseId } : {},
     }).then(r => r.data),
+
+  // Transferencias
+  transferStock: (data: unknown) =>
+    api.post('/inventory/transfer', data).then(r => r.data),
+
+  // Reservas
+  getReservations: (params?: Record<string, unknown>) =>
+    api.get<ListResponse<InventoryReservation>>('/inventory/reservations', { params }).then(r => r.data),
+
+  createReservation: (data: unknown) =>
+    api.post('/inventory/reservations', data).then(r => r.data),
+
+  cancelReservation: (id: string) =>
+    api.delete(`/inventory/reservations/${id}`),
+
+  // Conteos Cíclicos
+  getCycleCounts: (params?: Record<string, unknown>) =>
+    api.get<ListResponse<CycleCount>>('/inventory/cycle-counts', { params }).then(r => r.data),
+
+  getCycleCount: (id: string) =>
+    api.get<CycleCount>(`/inventory/cycle-counts/${id}`).then(r => r.data),
+
+  createCycleCount: (data: unknown) =>
+    api.post<{ id: string; count_number: string; status: string; total_lines: number; message: string }>(
+      '/inventory/cycle-counts', data
+    ).then(r => r.data),
+
+  recordCycleCountResults: (id: string, results: unknown[]) =>
+    api.post(`/inventory/cycle-counts/${id}/results`, { results }).then(r => r.data),
+
+  completeCycleCount: (id: string, applyResults: boolean) =>
+    api.post(`/inventory/cycle-counts/${id}/complete`, { apply_results: applyResults }).then(r => r.data),
 }
 
 // ── INBOUND ───────────────────────────────────────────
@@ -192,6 +235,22 @@ export const inboundApi = {
     api.get<ThroughputResponse<InboundThroughputPoint>>('/inbound/dashboard/throughput', {
       params: { days, ...(warehouseId ? { warehouse_id: warehouseId } : {}) },
     }).then(r => r.data),
+
+  // RTV (Devolución a Proveedor)
+  getRTVs: (params?: Record<string, unknown>) =>
+    api.get<PaginatedResponse<ReturnToVendor>>('/inbound/rtv', { params }).then(r => r.data),
+
+  getRTV: (id: string) =>
+    api.get<ReturnToVendor>(`/inbound/rtv/${id}`).then(r => r.data),
+
+  createRTV: (data: unknown) =>
+    api.post<ReturnToVendor>('/inbound/rtv', data).then(r => r.data),
+
+  shipRTV: (id: string, data: unknown) =>
+    api.post(`/inbound/rtv/${id}/ship`, data).then(r => r.data),
+
+  creditRTV: (id: string, data: unknown) =>
+    api.post(`/inbound/rtv/${id}/credit`, data).then(r => r.data),
 }
 
 // ── OUTBOUND ──────────────────────────────────────────

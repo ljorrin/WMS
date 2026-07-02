@@ -419,6 +419,8 @@ class AnomalyDetector:
         from sqlalchemy import select, func, and_
         from app.models.inventory import InventoryMovement
 
+        from app.models.inventory import MovementType
+
         cutoff = datetime.now(timezone.utc) - timedelta(days=days)
         try:
             result = await self.db.execute(
@@ -426,7 +428,9 @@ class AnomalyDetector:
                     and_(
                         InventoryMovement.tenant_id == self.tenant_id,
                         InventoryMovement.product_id == product_id,
-                        InventoryMovement.movement_type.in_(["PICK", "ISSUE"]),
+                        InventoryMovement.movement_type.in_(
+                            [MovementType.PICK.value, MovementType.SHIPMENT.value]
+                        ),
                         InventoryMovement.created_at >= cutoff,
                     )
                 )
@@ -434,4 +438,5 @@ class AnomalyDetector:
             total = float(result.scalar_one() or 0)
             return total / days
         except Exception:
+            await self.db.rollback()
             return 0.0

@@ -4,6 +4,7 @@ import {
   BarChart3, Settings, LogOut, ChevronDown, Warehouse,
   ClipboardList, Boxes, Route, PackageCheck, Ship,
   RefreshCw, AlertCircle, ScanLine, Database, Users, MapPin,
+  Undo2, ListChecks, ArrowRightLeft,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
@@ -24,6 +25,8 @@ const navItems: NavItem[] = [
       { label: 'Movimientos', icon: BarChart3, href: '/inventory/movements' },
       { label: 'Ajustes', icon: ClipboardList, href: '/inventory/adjustments' },
       { label: 'Por Vencer', icon: AlertCircle, href: '/inventory/expiry' },
+      { label: 'Conteos Cíclicos', icon: ListChecks, href: '/inventory/cycle-counts' },
+      { label: 'Transferencias', icon: ArrowRightLeft, href: '/inventory/transfers' },
     ],
   },
   {
@@ -32,6 +35,7 @@ const navItems: NavItem[] = [
       { label: 'Recepciones (GRN)', icon: Warehouse, href: '/inbound/grns' },
       { label: 'Control de Calidad', icon: ScanLine, href: '/inbound/quality' },
       { label: 'Putaway', icon: Route, href: '/inbound/putaway' },
+      { label: 'Devoluciones a Proveedor', icon: Undo2, href: '/inbound/rtv' },
     ],
   },
   {

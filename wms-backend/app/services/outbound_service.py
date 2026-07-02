@@ -48,7 +48,7 @@ from app.repositories.outbound import (
     ShipmentRepository,
 )
 from app.schemas.inventory import InventoryReservationCreate
-from app.services.inventory_service import InventoryService
+from app.services.inventory_service import InsufficientStockError, InventoryService
 
 log = structlog.get_logger(__name__)
 
@@ -126,7 +126,7 @@ class OutboundService:
                 await self.so_repo.update_line_quantities(
                     line.id, "quantity_allocated", line.quantity_ordered
                 )
-            except Exception as e:
+            except InsufficientStockError as e:
                 # Stock insuficiente → línea en BACKORDERED
                 log.warning("so.backorder_line", line_id=str(line.id), reason=str(e))
                 await self.so_repo.update_line_quantities(

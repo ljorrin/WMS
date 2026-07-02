@@ -131,6 +131,10 @@ class PurchaseOrderRepository:
                     PurchaseOrder.deleted_at.is_(None),
                 )
             )
+            # Refresca el objeto (y sus colecciones) si ya estaba en el identity map
+            # de la sesión — necesario para ver cambios de estado/historial hechos
+            # por otros métodos del repo dentro de la misma sesión/request.
+            .execution_options(populate_existing=True)
         )
         row = result.first()
         if not row:
@@ -541,6 +545,28 @@ class GRNRepository:
                 )
             )
             .values(**values)
+        )
+
+    async def update_line_qc_result(
+        self,
+        line_id: UUID,
+        quantity_accepted: Decimal,
+        quantity_rejected: Decimal,
+    ) -> None:
+        """Sincroniza en la línea del GRN el resultado de QC (aprobado/rechazado)."""
+        await self.db.execute(
+            update(GoodsReceiptLine)
+            .where(
+                and_(
+                    GoodsReceiptLine.id == line_id,
+                    GoodsReceiptLine.tenant_id == self.tenant_id,
+                )
+            )
+            .values(
+                quantity_accepted=quantity_accepted,
+                quantity_rejected=quantity_rejected,
+                updated_at=datetime.now(timezone.utc),
+            )
         )
 
     async def get_lines_pending_putaway(

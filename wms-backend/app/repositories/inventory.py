@@ -302,6 +302,13 @@ class InventoryLevelRepository:
 class InventoryMovementRepository:
     """Repositorio de movimientos de inventario."""
 
+    # Mapeo de nombres usados por el servicio → columnas reales del modelo
+    _FIELD_MAP = {
+        "reference_type": "source_document_type",
+        "reference_id": "source_document_id",
+        "reference_number": "source_document_number",
+    }
+
     def __init__(self, db: AsyncSession):
         self.db = db
 
@@ -316,15 +323,17 @@ class InventoryMovementRepository:
         **kwargs,
     ) -> InventoryMovement:
         """Crea un evento de movimiento inmutable."""
+        kwargs.pop("lot_number", None)  # no es columna; se deriva de Batch vía batch_id
+        mapped_kwargs = {self._FIELD_MAP.get(k, k): v for k, v in kwargs.items()}
         movement = InventoryMovement(
             tenant_id=tenant_id,
             warehouse_id=warehouse_id,
             product_id=product_id,
             movement_type=movement_type,
             quantity=quantity,
-            user_id=user_id,
+            operator_id=user_id,
             occurred_at=datetime.now(timezone.utc),
-            **kwargs,
+            **mapped_kwargs,
         )
         self.db.add(movement)
         await self.db.flush()
@@ -458,7 +467,7 @@ class BatchRepository:
                 Batch.tenant_id == tenant_id,
                 Batch.product_id == product_id,
                 Batch.warehouse_id == warehouse_id,
-                Batch.lot_number == lot_number,
+                Batch.batch_number == lot_number,
             )
         )
         return result.scalar_one_or_none()
@@ -568,14 +577,52 @@ class BatchRepository:
 class ReservationRepository:
     """Repositorio de reservas de inventario."""
 
+    # Mapeo de nombres usados por el servicio → columnas reales del modelo
+    _FIELD_MAP = {
+        "reference_type": "source_document_type",
+        "reference_id": "source_document_id",
+        "reference_number": "source_document_number",
+    }
+
     def __init__(self, db: AsyncSession):
         self.db = db
 
     async def create(self, tenant_id: uuid.UUID, **kwargs) -> InventoryReservation:
-        reservation = InventoryReservation(tenant_id=tenant_id, **kwargs)
+        mapped_kwargs = {self._FIELD_MAP.get(k, k): v for k, v in kwargs.items()}
+        reservation = InventoryReservation(tenant_id=tenant_id, **mapped_kwargs)
         self.db.add(reservation)
         await self.db.flush()
         return reservation
+
+    async def list(
+        self,
+        tenant_id: uuid.UUID,
+        warehouse_id: Optional[uuid.UUID] = None,
+        is_active: Optional[bool] = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> tuple[Sequence[InventoryReservation], int]:
+        stmt = select(InventoryReservation).where(InventoryReservation.tenant_id == tenant_id)
+        if warehouse_id:
+            stmt = stmt.where(InventoryReservation.warehouse_id == warehouse_id)
+        if is_active is not None:
+            stmt = stmt.where(InventoryReservation.is_active == is_active)
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await self.db.execute(count_stmt)).scalar_one()
+
+        stmt = stmt.offset(offset).limit(limit).order_by(InventoryReservation.reserved_at.desc())
+        items = (await self.db.execute(stmt)).scalars().all()
+        return items, total
+
+    async def get_by_id(self, reservation_id: uuid.UUID, tenant_id: uuid.UUID) -> Optional[InventoryReservation]:
+        result = await self.db.execute(
+            select(InventoryReservation).where(
+                InventoryReservation.id == reservation_id,
+                InventoryReservation.tenant_id == tenant_id,
+            )
+        )
+        return result.scalar_one_or_none()
 
     async def get_active_by_reference(
         self,
@@ -586,9 +633,9 @@ class ReservationRepository:
         result = await self.db.execute(
             select(InventoryReservation).where(
                 InventoryReservation.tenant_id == tenant_id,
-                InventoryReservation.reference_type == reference_type,
-                InventoryReservation.reference_id == reference_id,
-                InventoryReservation.status == "active",
+                InventoryReservation.source_document_type == reference_type,
+                InventoryReservation.source_document_id == reference_id,
+                InventoryReservation.is_active.is_(True),
             )
         )
         return result.scalars().all()
@@ -606,7 +653,7 @@ class ReservationRepository:
                 InventoryReservation.tenant_id == tenant_id,
                 InventoryReservation.warehouse_id == warehouse_id,
                 InventoryReservation.product_id == product_id,
-                InventoryReservation.status == "active",
+                InventoryReservation.is_active.is_(True),
             )
         )
         return result.scalar_one() or Decimal("0")
@@ -742,7 +789,7 @@ class CycleCountRepository:
             name=name,
             count_type=count_type,
             status="draft",
-            scheduled_date=scheduled_date,
+            planned_date=scheduled_date,
             notes=notes,
             created_by_id=created_by,
         )
@@ -751,10 +798,10 @@ class CycleCountRepository:
         return cc
 
     async def add_line(self, cycle_count_id: uuid.UUID, tenant_id: uuid.UUID, **kwargs) -> CycleCountLine:
+        kwargs.setdefault("status", "pending")
         line = CycleCountLine(
             cycle_count_id=cycle_count_id,
             tenant_id=tenant_id,
-            status="pending",
             **kwargs,
         )
         self.db.add(line)
@@ -786,6 +833,9 @@ class CycleCountRepository:
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.db.execute(count_stmt)).scalar_one()
 
-        stmt = stmt.offset(offset).limit(limit).order_by(CycleCount.created_at.desc())
+        stmt = (
+            stmt.options(selectinload(CycleCount.lines))
+            .offset(offset).limit(limit).order_by(CycleCount.created_at.desc())
+        )
         items = (await self.db.execute(stmt)).scalars().all()
         return items, total

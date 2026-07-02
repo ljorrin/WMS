@@ -23,7 +23,7 @@ const PAGE_SIZE = 25
 const TRACEABILITY_TYPES = ['none', 'lot', 'serial', 'lot_expiry']
 const STORAGE_CONDITIONS = ['ambient', 'controlled', 'refrigerated', 'frozen', 'ultra_frozen']
 const ROTATION_STRATEGIES = ['FEFO', 'FIFO', 'LIFO', 'LEFO']
-const LOCATION_TYPES = ['standard', 'bulk', 'floor', 'mezzanine', 'cold_room', 'staging', 'qc_zone']
+const LOCATION_TYPES = ['standard', 'bulk', 'floor', 'mezzanine', 'cold_room', 'hazmat', 'quarantine', 'receiving', 'shipping', 'staging', 'cross_dock', 'damaged', 'returns']
 const SUPPLIER_TYPES = ['manufacturer', 'distributor', 'broker', 'importer']
 
 // ─── Productos ────────────────────────────────────────────
