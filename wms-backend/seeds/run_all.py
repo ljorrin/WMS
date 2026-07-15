@@ -92,6 +92,17 @@ SYSTEM_PERMISSIONS = [
     ("ai:optimize:create",       "Optimizar Rutas de Picking",   "ai"),
     ("ai:anomaly:manage",        "Gestionar Anomalías",          "ai"),
     ("ai:assistant:use",         "Usar Asistente WMS",           "ai"),
+
+    # ── Labor Management ──
+    ("labor:read",               "Ver Productividad/Labor",      "labor"),
+    ("labor:standard:manage",    "Gestionar Estándares de Labor","labor"),
+    ("labor:task:manage",        "Gestionar Tareas de Labor",    "labor"),
+    ("labor:task:execute",       "Ejecutar Tareas de Labor",     "labor"),
+
+    # ── Slotting dinámico ──
+    ("slotting:read",            "Ver Slotting",                 "slotting"),
+    ("slotting:run",             "Ejecutar Análisis de Slotting","slotting"),
+    ("slotting:manage",          "Gestionar Slotting",           "slotting"),
 ]
 
 
@@ -119,6 +130,8 @@ SYSTEM_ROLES = {
             "outbound:packing:manage", "outbound:shipping:manage",
             "outbound:rma:create", "outbound:rma:manage",
             "master:product:read", "admin:audit:read", "admin:reports:export",
+            "labor:read", "labor:standard:manage", "labor:task:manage", "labor:task:execute",
+            "slotting:read", "slotting:run", "slotting:manage",
         ],
     },
     "Operador de Bodega": {
@@ -129,6 +142,7 @@ SYSTEM_ROLES = {
             "outbound:so:read", "outbound:wave:create",
             "outbound:picking:manage", "outbound:picking:execute", "outbound:packing:manage",
             "master:product:read",
+            "labor:read", "labor:task:execute",
         ],
     },
     "Auditor / Contador": {
@@ -137,6 +151,7 @@ SYSTEM_ROLES = {
             "inventory:read", "inventory:cycle_count:manage",
             "inbound:po:read", "outbound:so:read",
             "master:product:read", "admin:audit:read", "admin:reports:export",
+            "labor:read", "slotting:read",
         ],
     },
     "Analista IA": {
@@ -145,6 +160,7 @@ SYSTEM_ROLES = {
             "inventory:read", "master:product:read",
             "ai:forecast:create", "ai:optimize:create", "ai:anomaly:manage", "ai:assistant:use",
             "admin:reports:export",
+            "slotting:read", "slotting:run",
         ],
     },
 }

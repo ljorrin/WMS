@@ -7,7 +7,7 @@ Prefijo: /api/v1
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, health, tenants, users, warehouses, master_data, inventory, inbound, outbound, ai, realtime, integrations, sync, yms
+from app.api.v1.endpoints import auth, health, tenants, users, warehouses, master_data, inventory, inbound, outbound, ai, realtime, integrations, sync, yms, labor, slotting, streaming
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -38,3 +38,12 @@ api_router.include_router(sync.router, prefix="/sync", tags=["🔄 Sync Offline"
 
 # ── YMS (Yard Management) ────────────────────────────────────────────────────
 api_router.include_router(yms.router, prefix="/yms", tags=["🚧 YMS"])
+
+# ── Labor Management (gestión de mano de obra) ───────────────────────────────
+api_router.include_router(labor.router, prefix="/labor", tags=["👷 Labor"])
+
+# ── Slotting dinámico (ubicación óptima por rotación) ────────────────────────
+api_router.include_router(slotting.router, prefix="/slotting", tags=["🎯 Slotting"])
+
+# ── Order Streaming / Picking waveless ───────────────────────────────────────
+api_router.include_router(streaming.router, prefix="/streaming", tags=["🌊 Streaming"])

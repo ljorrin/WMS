@@ -20,6 +20,8 @@ from app.models.ai import (
     AnomalyEvent, AIConversation, AIConversationMessage,
 )
 from app.models.yms import Dock, YardAppointment
+from app.models.labor import LaborStandard, LaborTask
+from app.models.slotting import SlottingPolicy, SlottingRecommendation
 
 __all__ = [
     "WMSBase", "WMSTenantBase",
@@ -33,4 +35,7 @@ __all__ = [
     "PackTask", "Shipment", "ReturnOrder",
     "DemandForecast", "ReplenishmentAlert", "PickingRouteOptimization",
     "AnomalyEvent", "AIConversation", "AIConversationMessage",
+    "Dock", "YardAppointment",
+    "LaborStandard", "LaborTask",
+    "SlottingPolicy", "SlottingRecommendation",
 ]

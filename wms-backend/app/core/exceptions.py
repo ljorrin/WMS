@@ -56,3 +56,31 @@ class OrderStateError(OutboundServiceError):
 
 class PickingStateError(OutboundServiceError):
     """La tarea de picking no está en estado válido."""
+
+
+# -- Labor Management (FR-090...093) --------------------------------------------
+
+class LaborServiceError(WMSError):
+    """Error generico del servicio de gestion de mano de obra."""
+
+
+class LaborStandardError(LaborServiceError):
+    """Conflicto o invalidez en un estandar de labor."""
+
+
+class LaborTaskStateError(LaborServiceError):
+    """La tarea de labor no esta en un estado valido para la operacion."""
+
+
+# -- Slotting dinamico (FR-094...097) --------------------------------------------
+
+class SlottingServiceError(WMSError):
+    """Error generico del servicio de slotting."""
+
+
+class SlottingPolicyError(SlottingServiceError):
+    """Conflicto o invalidez en una politica de slotting."""
+
+
+class SlottingStateError(SlottingServiceError):
+    """La recomendacion de slotting no esta en un estado valido."""
