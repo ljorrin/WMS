@@ -84,3 +84,13 @@ class SlottingPolicyError(SlottingServiceError):
 
 class SlottingStateError(SlottingServiceError):
     """La recomendacion de slotting no esta en un estado valido."""
+
+
+# -- Hardware RFID/RF (Fase 2) ---------------------------------------------------
+
+class RfidServiceError(WMSError):
+    """Error generico del servicio de hardware RFID."""
+
+
+class RfidDeviceError(RfidServiceError):
+    """Conflicto o invalidez en un reader/antena registrado."""

@@ -7,7 +7,7 @@ Prefijo: /api/v1
 
 from fastapi import APIRouter
 
-from app.api.v1.endpoints import auth, health, tenants, users, warehouses, master_data, inventory, inbound, outbound, ai, realtime, integrations, sync, yms, labor, slotting, streaming
+from app.api.v1.endpoints import auth, health, tenants, users, warehouses, master_data, inventory, inbound, outbound, ai, realtime, integrations, sync, yms, labor, slotting, streaming, hardware
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -47,3 +47,6 @@ api_router.include_router(slotting.router, prefix="/slotting", tags=["🎯 Slott
 
 # ── Order Streaming / Picking waveless ───────────────────────────────────────
 api_router.include_router(streaming.router, prefix="/streaming", tags=["🌊 Streaming"])
+
+# ── Hardware RFID/RF + etiquetas ZPL ─────────────────────────────────────────
+api_router.include_router(hardware.router, prefix="/hardware", tags=["📡 Hardware RFID/ZPL"])

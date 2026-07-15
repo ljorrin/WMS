@@ -103,6 +103,11 @@ SYSTEM_PERMISSIONS = [
     ("slotting:read",            "Ver Slotting",                 "slotting"),
     ("slotting:run",             "Ejecutar Análisis de Slotting","slotting"),
     ("slotting:manage",          "Gestionar Slotting",           "slotting"),
+
+    # ── Hardware RFID/RF y etiquetas ZPL ──
+    ("hardware:read",            "Ver Hardware RFID/Lecturas",   "hardware"),
+    ("hardware:manage",          "Gestionar Readers/Antenas",    "hardware"),
+    ("hardware:ingest",          "Ingestar Lecturas RFID (gateway)","hardware"),
 ]
 
 
@@ -132,6 +137,7 @@ SYSTEM_ROLES = {
             "master:product:read", "admin:audit:read", "admin:reports:export",
             "labor:read", "labor:standard:manage", "labor:task:manage", "labor:task:execute",
             "slotting:read", "slotting:run", "slotting:manage",
+            "hardware:read", "hardware:manage",
         ],
     },
     "Operador de Bodega": {
@@ -143,6 +149,7 @@ SYSTEM_ROLES = {
             "outbound:picking:manage", "outbound:picking:execute", "outbound:packing:manage",
             "master:product:read",
             "labor:read", "labor:task:execute",
+            "hardware:read",
         ],
     },
     "Auditor / Contador": {
@@ -152,6 +159,7 @@ SYSTEM_ROLES = {
             "inbound:po:read", "outbound:so:read",
             "master:product:read", "admin:audit:read", "admin:reports:export",
             "labor:read", "slotting:read",
+            "hardware:read",
         ],
     },
     "Analista IA": {

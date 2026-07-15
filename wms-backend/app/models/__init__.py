@@ -22,6 +22,7 @@ from app.models.ai import (
 from app.models.yms import Dock, YardAppointment
 from app.models.labor import LaborStandard, LaborTask
 from app.models.slotting import SlottingPolicy, SlottingRecommendation
+from app.models.rfid import RfidReader, RfidAntenna, RfidTagRead
 
 __all__ = [
     "WMSBase", "WMSTenantBase",
@@ -38,4 +39,5 @@ __all__ = [
     "Dock", "YardAppointment",
     "LaborStandard", "LaborTask",
     "SlottingPolicy", "SlottingRecommendation",
+    "RfidReader", "RfidAntenna", "RfidTagRead",
 ]
