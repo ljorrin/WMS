@@ -13,6 +13,7 @@ Funciones de utilidad: cache, bloqueo distribuido, pub/sub.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from contextlib import asynccontextmanager
 from datetime import timedelta
@@ -142,10 +143,19 @@ async def distributed_lock(
     lock_name: str,
     timeout: int = 30,
     redis: Optional[Redis] = None,
+    retry_interval: float = 0.1,
 ) -> AsyncGenerator[bool, None]:
     """
     Lock distribuido con Redis (patrón SETNX).
     Evita condiciones de carrera en operaciones críticas de inventario.
+
+    Reintenta adquirir el lock (poll cada `retry_interval` segundos) hasta
+    agotar `timeout`, en vez de rendirse ante la primera colisión: bajo
+    concurrencia real (varios pickers/transferencias sobre el mismo
+    producto/ubicación), lo esperable es que las operaciones se coordinen en
+    serie, no que la mayoría falle de inmediato con "no se pudo obtener el
+    lock" habiendo stock de sobra (hallado con pruebas de concurrencia reales
+    — Fase 0.5 del plan de implementación).
 
     Uso:
         async with distributed_lock("inventory:adjust:sku-123") as acquired:
@@ -154,7 +164,13 @@ async def distributed_lock(
     """
     client = redis or await get_redis()
     lock_key = f"lock:{lock_name}"
+    loop = asyncio.get_event_loop()
+    deadline = loop.time() + timeout
+
     acquired = await client.set(lock_key, "1", ex=timeout, nx=True)
+    while not acquired and loop.time() < deadline:
+        await asyncio.sleep(retry_interval)
+        acquired = await client.set(lock_key, "1", ex=timeout, nx=True)
 
     try:
         yield bool(acquired)

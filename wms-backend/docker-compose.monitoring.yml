@@ -1,0 +1,36 @@
+version: "3.9"
+
+# ─── WMS Panama — Monitoreo local persistente (Fase 0.6 del plan de implementación) ───
+# Extiende el stack de desarrollo (docker-compose.yml) con Prometheus, scrapeando
+# las métricas reales de la API (`GET /api/v1/health/metrics`, ya instrumentada
+# con prometheus-client). Deliberadamente NO incluye postgres/redis/nginx
+# exporters todavía: este repo apunta a un PostgreSQL real fuera de Docker
+# (ver .env.example "Opción B") cuyas credenciales no deben quedar en un
+# docker-compose versionado; se agregarán cuando haya un exporter configurado
+# de forma segura (variable de entorno, no valor hardcodeado).
+#
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+#   → Prometheus: http://localhost:9090  (target "wms-api" en /targets)
+# ──────────────────────────────────────────────────────────────────────────────
+
+services:
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: wms_prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=15d"
+    volumes:
+      - ../monitoring/prometheus.dev.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - wms_network
+
+volumes:
+  prometheus_data:
+    driver: local

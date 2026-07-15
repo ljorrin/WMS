@@ -302,6 +302,15 @@ class InventoryService:
             batch = alloc["batch"]
             qty = alloc["quantity_to_use"]
 
+            # Si el nivel tiene cantidad reservada (soft reserve hecho en
+            # confirm_sales_order vía create_reservation), el pick CONSUME esa
+            # reserva en vez de descontar `quantity_available` de nuevo: ya se
+            # había restado al reservar. De lo contrario `available` se
+            # descuenta doblemente y queda permanentemente desalineado de
+            # `on_hand` (bug real encontrado ejecutando el test E2E — Fase 0.4).
+            reserved_consumed = min(qty, level.quantity_reserved or Decimal("0"))
+            available_consumed = qty - reserved_consumed
+
             async with distributed_lock(
                 f"inv:pick:{self.tenant_id}:{level.id}", timeout=30
             ) as acquired:
@@ -311,7 +320,8 @@ class InventoryService:
                 await self.levels.update_quantities(
                     level.id,
                     delta_on_hand=-qty,
-                    delta_available=-qty,
+                    delta_available=-available_consumed,
+                    delta_reserved=-reserved_consumed,
                 )
 
             movement = await self.movements.create(

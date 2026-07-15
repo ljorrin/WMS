@@ -337,9 +337,54 @@ async def test_full_flow_po_to_kpis_with_reconciliation(flow_seed):
     assert rec.recommended_zone_code == s.zone_pick_code
     assert rec.recommended_location_id == s.loc_pickface_id  # único candidato en zona dorada
 
+    level_before_move = (await s.db.execute(
+        select(InventoryLevel).where(and_(
+            InventoryLevel.warehouse_id == s.warehouse_id,
+            InventoryLevel.product_id == s.product_id,
+            InventoryLevel.location_id == s.loc_storage_id,
+        ))
+    )).scalar_one()
+    stock_before_move = level_before_move.quantity_on_hand
+    assert stock_before_move > 0  # aún queda stock en RSV-01 antes de aplicar
+    # `available` no debe quedar desalineado de `on_hand`: las reservas soft de
+    # SO-A y SO-B (confirm_sales_order) deben haberse consumido al completar el
+    # pick, no descontarse dos veces (regresión del bug de Fase 0.4/0.5).
+    assert level_before_move.quantity_available == stock_before_move
+    assert level_before_move.quantity_reserved == 0
+
     applied = await slotting.apply_recommendation(s.tenant_id, rec.id, s.user_id)
     await s.db.flush()
     assert applied.status == "applied"
+
+    # La recomendación aplicada debe MOVER el stock físicamente (no solo cambiar
+    # el estado): RSV-01 queda en cero y PICK-01 recibe la cantidad completa.
+    stock_after_move_origin = (await s.db.execute(
+        select(func.coalesce(func.sum(InventoryLevel.quantity_on_hand), 0)).where(and_(
+            InventoryLevel.warehouse_id == s.warehouse_id,
+            InventoryLevel.product_id == s.product_id,
+            InventoryLevel.location_id == s.loc_storage_id,
+        ))
+    )).scalar_one()
+    stock_after_move_dest = (await s.db.execute(
+        select(func.coalesce(func.sum(InventoryLevel.quantity_on_hand), 0)).where(and_(
+            InventoryLevel.warehouse_id == s.warehouse_id,
+            InventoryLevel.product_id == s.product_id,
+            InventoryLevel.location_id == s.loc_pickface_id,
+        ))
+    )).scalar_one()
+    assert stock_after_move_origin == 0
+    assert stock_after_move_dest == stock_before_move
+
+    relocation_movement = (await s.db.execute(
+        select(InventoryMovement).where(and_(
+            InventoryMovement.tenant_id == s.tenant_id,
+            InventoryMovement.product_id == s.product_id,
+            InventoryMovement.movement_type == MovementType.TRANSFER_OUT,
+            InventoryMovement.from_location_id == s.loc_storage_id,
+            InventoryMovement.to_location_id == s.loc_pickface_id,
+        ))
+    )).scalar_one_or_none()
+    assert relocation_movement is not None
 
     # ═══ 6) KPIs: inbound, outbound y labor responden sin error con datos reales ═══
     inbound_kpis = await inbound.get_dashboard_metrics(s.warehouse_id)

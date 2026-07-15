@@ -27,8 +27,8 @@ from locust.exception import StopUser
 # ── Credenciales de prueba ────────────────────────────────────────────────────
 
 DEMO_CREDENTIALS = {
-    "email": "admin@wms-demo.pa",
-    "password": "Admin1234!",
+    "email": "admin@wmspanama.com",
+    "password": "Admin123!",
 }
 
 
@@ -47,6 +47,17 @@ class BaseWMSUser(HttpUser):
             raise StopUser()
         token = resp.json().get("access_token", "")
         self.headers = {"Authorization": f"Bearer {token}"}
+
+        # La bodega es requerida por varios endpoints (p. ej. near-expiry);
+        # se resuelve una vez por usuario virtual contra el tenant demo.
+        self.warehouse_id = None
+        wh_resp = self.client.get(
+            "/api/v1/warehouses", headers=self.headers, name="[Setup] Warehouses",
+        )
+        if wh_resp.status_code == 200:
+            items = wh_resp.json().get("items", [])
+            if items:
+                self.warehouse_id = items[0]["id"]
 
     def on_stop(self):
         """Logout al terminar."""
@@ -149,9 +160,11 @@ class WMSUser(BaseWMSUser):
 
     @task(1)
     def near_expiry_check(self):
+        if not self.warehouse_id:
+            return
         self.client.get(
             "/api/v1/inventory/batches/near-expiry",
-            params={"days": 30},
+            params={"warehouse_id": self.warehouse_id, "days_ahead": 30},
             headers=self.headers,
             name="[Inventory] Near expiry",
         )

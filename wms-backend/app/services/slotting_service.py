@@ -360,11 +360,49 @@ class SlottingService:
     async def apply_recommendation(
         self, tenant_id: uuid.UUID, rec_id: uuid.UUID, user_id: uuid.UUID,
     ) -> SlottingRecommendation:
+        """
+        Aplica la recomendación: además de cambiar el estado, mueve físicamente
+        el stock de `current_location_id` a `recommended_location_id` (por cada
+        lote/nivel existente), generando el movimiento de inventario correspondiente.
+        Si no hay ubicación origen/destino o no hay stock que mover (p.ej. producto
+        nuevo sin inventario aún), solo se actualiza el estado.
+        """
+        from app.models.inventory import InventoryLevel
+        from app.services.inventory_service import InventoryService
+
         rec = await self._get_rec(tenant_id, rec_id)
         if rec.status != "pending":
             raise SlottingStateError(
                 f"Solo se aplica una recomendación 'pending' (actual: '{rec.status}')."
             )
+
+        if (
+            rec.current_location_id
+            and rec.recommended_location_id
+            and rec.current_location_id != rec.recommended_location_id
+        ):
+            levels = (await self.db.execute(
+                select(InventoryLevel).where(and_(
+                    InventoryLevel.tenant_id == tenant_id,
+                    InventoryLevel.warehouse_id == rec.warehouse_id,
+                    InventoryLevel.product_id == rec.product_id,
+                    InventoryLevel.location_id == rec.current_location_id,
+                    InventoryLevel.quantity_available > 0,
+                ))
+            )).scalars().all()
+
+            inv = InventoryService(self.db, tenant_id, user_id)
+            for level in levels:
+                await inv.transfer_location(
+                    warehouse_id=rec.warehouse_id,
+                    product_id=rec.product_id,
+                    from_location_id=rec.current_location_id,
+                    to_location_id=rec.recommended_location_id,
+                    quantity=level.quantity_available,
+                    batch_id=level.batch_id,
+                    notes=f"Slotting aplicado (clase {rec.abc_class}): {rec.reason}",
+                )
+
         rec.status = "applied"
         rec.applied_at = _now()
         rec.applied_by = user_id

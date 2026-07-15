@@ -1,0 +1,23 @@
+###############################################################################
+# WMS Panama — Prometheus (desarrollo/staging local)
+# Usado por wms-backend/docker-compose.monitoring.yml. A diferencia de
+# monitoring/prometheus.yml (producción, con nginx/postgres/redis/celery
+# exporters), este solo scrapea la API — es lo único que corre realmente en
+# el stack de desarrollo hoy. Agregar más jobs aquí cuando esos exporters se
+# desplieguen en el entorno de staging (ver tests/load/README.md y Fase 0.6
+# del plan de implementación).
+###############################################################################
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    system: wms-panama
+    environment: development
+
+scrape_configs:
+  # FastAPI backend (prometheus-fastapi-instrumentator / prometheus-client)
+  - job_name: wms-api
+    static_configs:
+      - targets: [api:8000]
+    metrics_path: /api/v1/health/metrics

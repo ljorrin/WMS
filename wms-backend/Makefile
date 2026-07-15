@@ -4,8 +4,8 @@
 # ──────────────────────────────────────────────────────────────────────────────
 
 .PHONY: help up down build logs db-upgrade db-downgrade db-migrate db-reset \
-        seed test test-cov test-unit test-integration test-integration-db \
-        lint format typecheck clean shell
+        seed test test-cov test-unit test-integration test-integration-db test-load \
+        lint format typecheck clean shell monitoring-up monitoring-down
 
 # Colores para la consola
 GREEN  := \033[0;32m
@@ -44,6 +44,13 @@ logs-all: ## 📋 Ver logs de todos los servicios
 
 restart-api: ## 🔄 Reiniciar solo el API
 	docker compose restart api
+
+monitoring-up: ## 📊 Levantar Prometheus local (scrapea /api/v1/health/metrics) — Fase 0.6
+	docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d prometheus
+	@echo "$(GREEN)Prometheus:$(RESET) http://localhost:9090/targets"
+
+monitoring-down: ## 📊 Detener Prometheus local
+	docker compose -f docker-compose.yml -f docker-compose.monitoring.yml stop prometheus
 
 # ── Base de Datos / Migraciones ───────────────────────────────────────────────
 
@@ -99,6 +106,9 @@ test-integration-db: ## 🧪 Integración contra PostgreSQL real (crea wms_test 
 
 test-watch: ## 🧪 Tests en modo watch (requiere pytest-watch)
 	docker compose exec api ptw tests/ -- -v
+
+test-load: ## 🧪 Prueba de carga con Locust (15 usuarios, 45s) — ver tests/load/README.md
+	docker compose exec api locust -f tests/load/locustfile.py --host=http://localhost:8000 --users=15 --spawn-rate=5 --run-time=45s --headless --only-summary
 
 # ── Calidad de Código ─────────────────────────────────────────────────────────
 

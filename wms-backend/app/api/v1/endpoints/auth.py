@@ -22,6 +22,7 @@ from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.dependencies import (
@@ -144,7 +145,14 @@ async def login(
         raise invalid_credentials_exc
 
     # Verificar contraseña
-    if not user.hashed_password or not verify_password(body.password, user.hashed_password):
+    # bcrypt es CPU-bound (~200-300ms); se corre en threadpool para no bloquear
+    # el event loop — bajo carga concurrente, un verify_password() síncrono aquí
+    # serializa TODAS las requests del proceso, no solo los logins (confirmado
+    # con locust: Fase 0.5, P95 de login >5s con solo 15 usuarios concurrentes).
+    password_ok = bool(user.hashed_password) and await run_in_threadpool(
+        verify_password, body.password, user.hashed_password
+    )
+    if not password_ok:
         user.failed_login_attempts += 1
         if user.failed_login_attempts >= 5:
             user.status = UserStatus.LOCKED
@@ -400,7 +408,7 @@ async def change_password(
     db: DBDep,
 ) -> MessageResponse:
     """Cambia la contraseña del usuario autenticado."""
-    if not verify_password(body.current_password, current_user.hashed_password):
+    if not await run_in_threadpool(verify_password, body.current_password, current_user.hashed_password):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Contraseña actual incorrecta.",

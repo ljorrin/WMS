@@ -35,6 +35,8 @@ from app.models.inbound import (
     PutawayTask,
     POStatus, GRNStatus, QCStatus, PutawayStatus
 )
+from app.models.labor import LaborStandard
+from app.models.slotting import SlottingPolicy
 
 fake = Faker('es_MX')
 
@@ -112,18 +114,58 @@ async def seed_demo_data(db: AsyncSession):
         db.add(warehouse)
         await db.flush()
 
-    # 2. Crear Zones y Locations
-    print("Generando Zonas y Ubicaciones...")
-    zone = (await db.execute(select(Zone).where(Zone.warehouse_id == warehouse.id))).scalars().first()
+    # 2. Crear Zones y Locations (50 ubicaciones: 10 secas + 15 frente de picking
+    #    "dorado" (zona PICK) + 25 de reserva/bulk (zona RSV) — necesarias para que
+    #    el motor de Slotting Dinámico tenga candidatas reales sobre las que recomendar).
+    print("Generando Zonas y Ubicaciones (50)...")
+    zone = (await db.execute(select(Zone).where(Zone.warehouse_id == warehouse.id, Zone.code == "Z-SEC"))).scalars().first()
     if not zone:
         zone = Zone(tenant_id=tid, warehouse_id=warehouse.id, code="Z-SEC", name="Secos Principal", zone_type="storage")
         db.add(zone)
         await db.flush()
 
-    locations = (await db.execute(select(Location).where(Location.zone_id == zone.id))).scalars().all()
-    if not locations:
+    zone_pick = (await db.execute(select(Zone).where(Zone.warehouse_id == warehouse.id, Zone.code == "PICK"))).scalars().first()
+    if not zone_pick:
+        zone_pick = Zone(tenant_id=tid, warehouse_id=warehouse.id, code="PICK", name="Zona Dorada de Picking", zone_type="picking")
+        db.add(zone_pick)
+        await db.flush()
+
+    zone_reserve = (await db.execute(select(Zone).where(Zone.warehouse_id == warehouse.id, Zone.code == "RSV"))).scalars().first()
+    if not zone_reserve:
+        zone_reserve = Zone(tenant_id=tid, warehouse_id=warehouse.id, code="RSV", name="Zona de Reserva/Bulk", zone_type="storage")
+        db.add(zone_reserve)
+        await db.flush()
+
+    locations = (await db.execute(select(Location).where(Location.warehouse_id == warehouse.id))).scalars().all()
+    existing_codes = {loc.code for loc in locations}
+    if len(locations) < 50:
         for i in range(1, 11):
-            loc = Location(tenant_id=tid, warehouse_id=warehouse.id, zone_id=zone.id, code=f"A-01-B-{i:02d}", location_type=LocationType.STANDARD, status=LocationStatus.ACTIVE)
+            code = f"A-01-B-{i:02d}"
+            if code in existing_codes:
+                continue
+            loc = Location(tenant_id=tid, warehouse_id=warehouse.id, zone_id=zone.id, code=code, location_type=LocationType.STANDARD, status=LocationStatus.ACTIVE)
+            db.add(loc)
+            locations.append(loc)
+        for i in range(1, 16):
+            code = f"PICK-{i:02d}"
+            if code in existing_codes:
+                continue
+            loc = Location(
+                tenant_id=tid, warehouse_id=warehouse.id, zone_id=zone_pick.id, code=code,
+                location_type=LocationType.STANDARD, status=LocationStatus.ACTIVE,
+                pick_sequence=i, is_pick_face=True, max_units=500,
+            )
+            db.add(loc)
+            locations.append(loc)
+        for i in range(1, 26):
+            code = f"RSV-{i:02d}"
+            if code in existing_codes:
+                continue
+            loc = Location(
+                tenant_id=tid, warehouse_id=warehouse.id, zone_id=zone_reserve.id, code=code,
+                location_type=LocationType.BULK, status=LocationStatus.ACTIVE,
+                pick_sequence=100 + i, is_pick_face=False, max_units=5000,
+            )
             db.add(loc)
             locations.append(loc)
         await db.flush()
@@ -146,15 +188,22 @@ async def seed_demo_data(db: AsyncSession):
             customers.append(cus)
         await db.flush()
 
-    # 4. Productos (Alimentos Secos)
-    print("Generando 100 Productos (Alimentos Secos)...")
+    # 4. Productos (Alimentos Secos) — catálogo realista de 500 SKUs. La lista base
+    # tiene ~94 productos distintos; se completa repitiendo el catálogo con un
+    # sufijo de variante/presentación (aún así cada SKU es único vía generate_sku).
+    PRODUCT_COUNT = 500
+    print(f"Generando {PRODUCT_COUNT} Productos (Alimentos Secos)...")
     products = (await db.execute(select(Product).where(Product.tenant_id == tid))).scalars().all()
-    if len(products) < 10:
-        for i, food in enumerate(FOOD_PRODUCTS[:100]):
+    if len(products) < PRODUCT_COUNT:
+        base_len = len(FOOD_PRODUCTS)
+        for i in range(len(products), PRODUCT_COUNT):
+            food = FOOD_PRODUCTS[i % base_len]
+            variant = i // base_len
+            name = food if variant == 0 else f"{food} (Presentación {variant + 1})"
             p = Product(
                 tenant_id=tid,
                 sku=generate_sku(i),
-                name=food,
+                name=name,
                 status=ProductStatus.ACTIVE,
                 industry=IndustryType.AGRO_FOOD,
                 tracking_type=TrackingType.LOT_EXPIRY,
@@ -504,6 +553,57 @@ async def seed_demo_data(db: AsyncSession):
                             await db.flush()
     except Exception as e:
         print(f"Skipping Outbound due to error: {e}")
+
+    # 9. Labor Standards — estándares de ingeniería globales del tenant (Fase 0.2),
+    # necesarios para que LaborService.create_task calcule standard_minutes real.
+    print("Generando Labor Standards...")
+    existing_standards = (await db.execute(
+        select(LaborStandard).where(LaborStandard.tenant_id == tid)
+    )).scalars().all()
+    if not existing_standards:
+        LABOR_STANDARDS = [
+            ("putaway", "unit", 2.0, 0.10, "Ubicar producto recibido en su posición final"),
+            ("pick", "unit", 1.0, 0.08, "Recolectar unidades para una orden de venta"),
+            ("receive", "unit", 3.0, 0.05, "Recepción y verificación de mercancía en el andén"),
+            ("pack", "unit", 2.5, 0.15, "Empaque y preparación de bultos para despacho"),
+            ("cycle_count", "unit", 1.5, 0.03, "Conteo cíclico de una ubicación"),
+            ("replenish", "unit", 2.0, 0.07, "Reabastecimiento de frente de picking desde reserva"),
+        ]
+        for activity_type, uom, fixed_min, per_unit_min, description in LABOR_STANDARDS:
+            db.add(LaborStandard(
+                tenant_id=tid,
+                warehouse_id=None,  # aplica a todas las bodegas del tenant
+                activity_type=activity_type,
+                uom=uom,
+                fixed_minutes=Decimal(str(fixed_min)),
+                std_minutes_per_unit=Decimal(str(per_unit_min)),
+                description=description,
+                is_active=True,
+            ))
+        await db.flush()
+    print(f"Labor Standards listos: {len(existing_standards) or len(LABOR_STANDARDS)}")
+
+    # 10. Slotting Policy — política de slotting dinámico apuntando a las zonas
+    # PICK (dorada) y RSV (bulk) recién creadas.
+    print("Generando Slotting Policy...")
+    existing_policy = (await db.execute(
+        select(SlottingPolicy).where(
+            SlottingPolicy.tenant_id == tid, SlottingPolicy.warehouse_id == warehouse.id
+        )
+    )).scalar_one_or_none()
+    if not existing_policy:
+        db.add(SlottingPolicy(
+            tenant_id=tid,
+            warehouse_id=warehouse.id,
+            strategy="velocity_abc",
+            velocity_window_days=90,
+            abc_a_threshold=Decimal("0.80"),
+            abc_b_threshold=Decimal("0.95"),
+            golden_zone_code="PICK",
+            bulk_zone_code="RSV",
+            is_active=True,
+        ))
+        await db.flush()
 
     await db.commit()
     print("¡Generación de datos finalizada con éxito!")

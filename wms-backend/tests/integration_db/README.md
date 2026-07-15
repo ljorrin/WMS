@@ -67,3 +67,30 @@ referenciaba `product.min_stock` (no existe; el campo real es `reorder_point`).
 > Nota: los fixtures (`seed`/`inventory_level` en `conftest.py`, `flow_seed` en
 > `test_e2e_flow.py`) construyen el grafo mínimo de datos maestros a partir de los
 > campos obligatorios reales de los modelos — no de mocks.
+
+### `test_concurrency.py` (Fase 0.5 del plan de implementación)
+
+A diferencia de los demás tests (secuenciales), lanza **N operaciones REALMENTE
+concurrentes** (cada una con su propia sesión/conexión, como N requests HTTP
+simultáneas) contra el mismo producto/ubicación, para verificar que
+`app.db.redis.distributed_lock` coordina correctamente el acceso concurrente a
+`InventoryLevel` sin sobrevender stock ni perder actualizaciones.
+
+Encontró un bug real la primera vez que se ejecutó: `distributed_lock` hacía un
+único intento SETNX y se rendía de inmediato ante la primera colisión
+(`acquired=False`), por lo que bajo concurrencia real la mayoría de las
+operaciones fallaban con "no se pudo obtener el lock" — aun habiendo stock de
+sobra para atenderlas en serie. Corregido en `app/db/redis.py`: ahora reintenta
+(poll cada 100ms) hasta agotar `timeout`, coordinando las operaciones en vez de
+rechazarlas.
+
+También expuso, vía las nuevas aserciones de `test_e2e_flow.py` sobre slotting
+(Fase 0.4 — mover stock físicamente), un segundo bug pre-existente más
+profundo: `InventoryService.pick_stock` descontaba `quantity_available` al
+completar un pick **sin liberar la reserva soft** creada antes en
+`confirm_sales_order` (`create_reservation`), descontando el disponible DOS
+veces (una al reservar, otra al pickear) mientras `quantity_on_hand` solo se
+descontaba una vez — desalineando `available` de `on_hand` permanentemente en
+cada venta confirmada y pickeada. Corregido en `pick_stock`: si el nivel tiene
+`quantity_reserved > 0`, el pick consume esa reserva (`delta_reserved`) en vez
+de volver a descontar `available`.
