@@ -669,3 +669,146 @@ export interface InventoryReservation {
   expires_at?: string
   created_at: string
 }
+
+// ── Labor Management (FR-090…093) ──────────────────────
+export type LaborActivityType =
+  | 'pick' | 'putaway' | 'receive' | 'pack' | 'cycle_count'
+  | 'replenish' | 'loading' | 'unloading' | 'transfer'
+
+export type LaborTaskStatus = 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled'
+
+export interface LaborStandard {
+  id: string
+  warehouse_id?: string | null
+  activity_type: LaborActivityType
+  uom: string
+  fixed_minutes: number
+  std_minutes_per_unit: number
+  description?: string | null
+  is_active: boolean
+}
+
+export interface LaborTask {
+  id: string
+  warehouse_id: string
+  user_id?: string | null
+  activity_type: LaborActivityType
+  reference_type?: string | null
+  reference_id?: string | null
+  reference_number?: string | null
+  location_id?: string | null
+  zone?: string | null
+  priority: number
+  quantity: number
+  uom: string
+  status: LaborTaskStatus
+  assigned_at?: string | null
+  started_at?: string | null
+  completed_at?: string | null
+  actual_minutes?: number | null
+  standard_minutes?: number | null
+  performance_pct?: number | null
+  is_interleaved: boolean
+}
+
+export interface LaborActivityKPI {
+  activity_type: string
+  tasks_completed: number
+  avg_performance_pct?: number | null
+  total_standard_hours: number
+  total_actual_hours: number
+}
+
+export interface LaborOperatorKPI {
+  user_id: string
+  tasks_completed: number
+  avg_performance_pct?: number | null
+  total_actual_hours: number
+}
+
+export interface LaborDashboardMetrics {
+  window_days: number
+  tasks_completed: number
+  tasks_pending: number
+  tasks_in_progress: number
+  avg_performance_pct?: number | null
+  total_standard_hours: number
+  total_actual_hours: number
+  labor_efficiency_pct?: number | null
+  by_activity: LaborActivityKPI[]
+  top_operators: LaborOperatorKPI[]
+  bottom_operators: LaborOperatorKPI[]
+}
+
+// ── Slotting Dinámico (FR-094…097) ─────────────────────
+export type SlottingRecommendationStatus = 'pending' | 'applied' | 'rejected' | 'expired'
+
+export interface SlottingPolicy {
+  id: string
+  warehouse_id?: string | null
+  strategy: string
+  velocity_window_days: number
+  abc_a_threshold: number
+  abc_b_threshold: number
+  golden_zone_code?: string | null
+  bulk_zone_code?: string | null
+  is_active: boolean
+}
+
+export interface SlottingRecommendation {
+  id: string
+  warehouse_id: string
+  product_id: string
+  product_name?: string
+  abc_class?: string | null
+  velocity_score?: number | null
+  pick_count?: number | null
+  current_location_id?: string | null
+  current_zone_code?: string | null
+  recommended_location_id?: string | null
+  recommended_zone_code?: string | null
+  reason?: string | null
+  score_delta?: number | null
+  status: SlottingRecommendationStatus
+  applied_at?: string | null
+}
+
+export interface SlottingAnalyzeResult {
+  window_days: number
+  products_analyzed: number
+  abc_counts: Record<string, number>
+  recommendations_created: number
+  golden_zone?: string | null
+  bulk_zone?: string | null
+}
+
+export interface SlottingDashboardMetrics {
+  pending: number
+  applied: number
+  rejected: number
+  pending_by_class: Record<string, number>
+  estimated_travel_savings: number
+}
+
+// ── Order Streaming / Waveless (FR-055) ────────────────
+export interface StreamingTask {
+  id: string
+  so_id: string
+  so_line_id: string
+  product_id: string
+  product_name?: string
+  quantity_requested: number
+  from_location_id?: string | null
+  status: string
+  priority: number
+  assigned_to_id?: string | null
+  wave_id?: string | null
+  started_at?: string | null
+}
+
+export interface StreamingMetrics {
+  queue_pending: number
+  in_progress: number
+  operators_active: number
+  wip_by_operator: Record<string, number>
+}

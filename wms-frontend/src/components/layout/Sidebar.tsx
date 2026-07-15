@@ -4,7 +4,7 @@ import {
   BarChart3, Settings, LogOut, ChevronDown, Warehouse,
   ClipboardList, Boxes, Route, PackageCheck, Ship,
   RefreshCw, AlertCircle, ScanLine, Database, Users, UserCheck, MapPin, Box,
-  Undo2, ListChecks, ArrowRightLeft,
+  Undo2, ListChecks, ArrowRightLeft, Waves, HardHat, Target,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
@@ -46,6 +46,7 @@ const navItems: NavItem[] = [
       { label: 'Empaque', icon: PackageCheck, href: '/outbound/packing' },
       { label: 'Envíos', icon: Ship, href: '/outbound/shipments' },
       { label: 'Devoluciones', icon: RefreshCw, href: '/outbound/returns' },
+      { label: 'Streaming (Waveless)', icon: Waves, href: '/outbound/streaming' },
     ],
   },
   {
@@ -57,6 +58,8 @@ const navItems: NavItem[] = [
       { label: 'Ubicaciones', icon: MapPin, href: '/master/locations' },
     ],
   },
+  { label: 'Labor Management', icon: HardHat, href: '/labor' },
+  { label: 'Slotting Dinámico', icon: Target, href: '/slotting' },
   { label: 'Configuración', icon: Settings, href: '/settings' },
 ]
 

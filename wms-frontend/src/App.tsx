@@ -26,8 +26,12 @@ import { PickingPage } from '@/pages/outbound/PickingPage'
 import { PackingPage } from '@/pages/outbound/PackingPage'
 import { ShipmentsPage } from '@/pages/outbound/ShipmentsPage'
 import { ReturnsPage } from '@/pages/outbound/ReturnsPage'
+import { StreamingPage } from '@/pages/outbound/StreamingPage'
 // Master Data
 import { MasterDataPage } from '@/pages/master/MasterDataPage'
+// Labor & Slotting
+import { LaborPage } from '@/pages/labor/LaborPage'
+import { SlottingPage } from '@/pages/slotting/SlottingPage'
 // Settings
 import { SettingsPage } from '@/pages/settings/SettingsPage'
 
@@ -90,6 +94,7 @@ export default function App() {
               <Route path="packing" element={<PackingPage />} />
               <Route path="shipments" element={<ShipmentsPage />} />
               <Route path="returns" element={<ReturnsPage />} />
+              <Route path="streaming" element={<StreamingPage />} />
             </Route>
 
             {/* Master Data */}
@@ -100,6 +105,10 @@ export default function App() {
               <Route path="box-types" element={<MasterDataPage />} />
               <Route path="locations" element={<MasterDataPage />} />
             </Route>
+
+            {/* Labor & Slotting */}
+            <Route path="labor" element={<LaborPage />} />
+            <Route path="slotting" element={<SlottingPage />} />
 
             {/* Settings */}
             <Route path="settings" element={<SettingsPage />} />

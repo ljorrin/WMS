@@ -84,4 +84,6 @@ export const STATUS_COLORS: Record<string, string> = {
   requested:         'bg-gray-100 text-gray-600',
   received:          'bg-indigo-100 text-indigo-700',
   inspected:         'bg-purple-100 text-purple-700',
+  // Labor / Slotting
+  assigned:          'bg-indigo-100 text-indigo-700',
 }

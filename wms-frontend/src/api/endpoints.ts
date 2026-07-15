@@ -13,6 +13,9 @@ import type {
   ThroughputResponse, InboundThroughputPoint, OutboundThroughputPoint,
   Product, Supplier, Customer, BoxType, LocationLite,
   ReturnToVendor, CycleCount, InventoryReservation, Company,
+  LaborStandard, LaborTask, LaborDashboardMetrics,
+  SlottingPolicy, SlottingRecommendation, SlottingAnalyzeResult, SlottingDashboardMetrics,
+  StreamingTask, StreamingMetrics,
 } from '@/types'
 
 interface ListResponse<T> { items: T[]; total: number; page: number; page_size: number }
@@ -383,4 +386,98 @@ export const outboundApi = {
   // Documento de despacho (FR-061): lista de empaque / remisión en PDF
   getPackingListPdf: (shipmentId: string) =>
     api.get<Blob>(`/outbound/shipments/${shipmentId}/packing-list`, { responseType: 'blob' }).then(r => r.data),
+}
+
+// ── LABOR MANAGEMENT (FR-090…093) ────────────────────
+export const laborApi = {
+  getStandards: (params?: Record<string, unknown>) =>
+    api.get<ListResponse<LaborStandard>>('/labor/standards', { params }).then(r => r.data),
+
+  createStandard: (data: unknown) =>
+    api.post<LaborStandard>('/labor/standards', data).then(r => r.data),
+
+  updateStandard: (id: string, data: unknown) =>
+    api.put<LaborStandard>(`/labor/standards/${id}`, data).then(r => r.data),
+
+  getTasks: (params?: Record<string, unknown>) =>
+    api.get<ListResponse<LaborTask>>('/labor/tasks', { params }).then(r => r.data),
+
+  createTask: (data: unknown) =>
+    api.post<LaborTask>('/labor/tasks', data).then(r => r.data),
+
+  assignTask: (id: string, operatorId: string) =>
+    api.post<LaborTask>(`/labor/tasks/${id}/assign`, null, { params: { operator_id: operatorId } }).then(r => r.data),
+
+  startTask: (id: string) =>
+    api.post<LaborTask>(`/labor/tasks/${id}/start`).then(r => r.data),
+
+  completeTask: (id: string) =>
+    api.post<LaborTask>(`/labor/tasks/${id}/complete`).then(r => r.data),
+
+  suggestNextTask: (warehouseId: string, zone?: string) =>
+    api.get<LaborTask | null>('/labor/next-task', { params: { warehouse_id: warehouseId, zone } }).then(r => r.data),
+
+  assignNextTask: (warehouseId: string, operatorId?: string, zone?: string) =>
+    api.post<LaborTask | null>('/labor/next-task/assign', null, {
+      params: { warehouse_id: warehouseId, operator_id: operatorId, zone },
+    }).then(r => r.data),
+
+  getDashboard: (warehouseId?: string, windowDays = 7) =>
+    api.get<LaborDashboardMetrics>('/labor/dashboard', {
+      params: { window_days: windowDays, ...(warehouseId ? { warehouse_id: warehouseId } : {}) },
+    }).then(r => r.data),
+}
+
+// ── SLOTTING DINÁMICO (FR-094…097) ───────────────────
+export const slottingApi = {
+  getPolicies: () =>
+    api.get<{ items: SlottingPolicy[] }>('/slotting/policy').then(r => r.data),
+
+  upsertPolicy: (data: unknown) =>
+    api.put<SlottingPolicy>('/slotting/policy', data).then(r => r.data),
+
+  analyze: (warehouseId: string, windowDays?: number, persist = true) =>
+    api.post<SlottingAnalyzeResult>('/slotting/analyze', {
+      warehouse_id: warehouseId, window_days: windowDays, persist,
+    }).then(r => r.data),
+
+  getRecommendations: (params?: Record<string, unknown>) =>
+    api.get<ListResponse<SlottingRecommendation>>('/slotting/recommendations', { params }).then(r => r.data),
+
+  applyRecommendation: (id: string) =>
+    api.post<SlottingRecommendation>(`/slotting/recommendations/${id}/apply`).then(r => r.data),
+
+  rejectRecommendation: (id: string) =>
+    api.post<SlottingRecommendation>(`/slotting/recommendations/${id}/reject`).then(r => r.data),
+
+  getDashboard: (warehouseId?: string) =>
+    api.get<SlottingDashboardMetrics>('/slotting/dashboard', {
+      params: warehouseId ? { warehouse_id: warehouseId } : {},
+    }).then(r => r.data),
+}
+
+// ── ORDER STREAMING / WAVELESS (FR-055) ──────────────
+export const streamingApi = {
+  enqueueOrder: (soId: string) =>
+    api.post<{ so_id: string; tasks_created: number; tasks: StreamingTask[] }>(
+      '/streaming/enqueue', { so_id: soId }
+    ).then(r => r.data),
+
+  next: (warehouseId: string, operatorId?: string, currentPickSequence?: number, maxWip = 1) =>
+    api.post<StreamingTask | null>('/streaming/next', {
+      warehouse_id: warehouseId,
+      operator_id: operatorId,
+      current_pick_sequence: currentPickSequence,
+      max_wip: maxWip,
+    }).then(r => r.data),
+
+  getQueue: (warehouseId?: string, limit = 50) =>
+    api.get<{ items: StreamingTask[]; count: number }>('/streaming/queue', {
+      params: { warehouse_id: warehouseId, limit },
+    }).then(r => r.data),
+
+  getMetrics: (warehouseId?: string) =>
+    api.get<StreamingMetrics>('/streaming/metrics', {
+      params: warehouseId ? { warehouse_id: warehouseId } : {},
+    }).then(r => r.data),
 }
