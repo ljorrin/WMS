@@ -254,6 +254,7 @@ class PurchaseOrderLine(WMSTenantBase):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     purchase_order: Mapped["PurchaseOrder"] = relationship(back_populates="lines")
+    product: Mapped["Product"] = relationship("Product")
 
     __table_args__ = (
         UniqueConstraint("purchase_order_id", "line_number",
@@ -663,6 +664,8 @@ class GoodsReceiptLine(WMSTenantBase):
     notes: Mapped[Optional[str]] = mapped_column(Text)
 
     goods_receipt: Mapped["GoodsReceipt"] = relationship(back_populates="lines")
+    product: Mapped["Product"] = relationship("Product")
+    location: Mapped["Location"] = relationship("Location")
 
     __table_args__ = (
         UniqueConstraint("grn_id", "line_number",

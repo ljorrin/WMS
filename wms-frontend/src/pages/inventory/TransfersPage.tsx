@@ -29,11 +29,34 @@ export function TransfersPage() {
   const [productId, setProductId] = useState('')
   const [productLabel, setProductLabel] = useState('')
   const [fromLocationId, setFromLocationId] = useState('')
+  const [fromLocationLabel, setFromLocationLabel] = useState('')
   const [toLocationId, setToLocationId] = useState('')
+  const [toLocationLabel, setToLocationLabel] = useState('')
   const [quantity, setQuantity] = useState('')
 
+  const { data: recentTransfersData } = useQuery({
+    queryKey: ['recent-transfers', warehouseId],
+    queryFn: () => inventoryApi.getMovements({ 
+      movement_type: 'transfer_out',
+      ...(warehouseId ? { warehouse_id: warehouseId } : {}),
+      page_size: 10 
+    }),
+  })
+
+  const recentTransfers = recentTransfersData?.items.map((m: any) => ({
+    id: m.id,
+    productLabel: `${m.product_code || ''} — ${m.product_name || ''}`,
+    fromLabel: m.from_location_code || 'N/A',
+    toLabel: m.to_location_code || 'N/A',
+    quantity: m.quantity,
+    at: m.occurred_at
+  })) || []
+
   const resetForm = () => {
-    setProductId(''); setProductLabel(''); setFromLocationId(''); setToLocationId(''); setQuantity('')
+    setProductId(''); setProductLabel('')
+    setFromLocationId(''); setFromLocationLabel('')
+    setToLocationId(''); setToLocationLabel('')
+    setQuantity('')
   }
 
   const transferMut = useMutation({
@@ -48,6 +71,7 @@ export function TransfersPage() {
       toast.success('Transferencia realizada')
       resetForm()
       qc.invalidateQueries({ queryKey: ['stock'] })
+      qc.invalidateQueries({ queryKey: ['recent-transfers'] })
     },
   })
 
@@ -102,12 +126,12 @@ export function TransfersPage() {
             <Combobox<LocationLite>
               placeholder="Ubicación origen…"
               value={fromLocationId}
-              displayLabel={fromLocationId}
+              displayLabel={fromLocationLabel}
               queryKey={`locations-from-${warehouseId}`}
               fetcher={s => masterApi.getLocations({ search: s, page_size: 20, ...(warehouseId ? { warehouse_id: warehouseId } : {}) })}
               getKey={l => l.id}
               getLabel={l => l.code}
-              onSelect={l => setFromLocationId(l.id)}
+              onSelect={l => { setFromLocationId(l.id); setFromLocationLabel(l.code) }}
             />
           </div>
           <div className="flex flex-col gap-1">
@@ -115,12 +139,12 @@ export function TransfersPage() {
             <Combobox<LocationLite>
               placeholder="Ubicación destino…"
               value={toLocationId}
-              displayLabel={toLocationId}
+              displayLabel={toLocationLabel}
               queryKey={`locations-to-${warehouseId}`}
               fetcher={s => masterApi.getLocations({ search: s, page_size: 20, ...(warehouseId ? { warehouse_id: warehouseId } : {}) })}
               getKey={l => l.id}
               getLabel={l => l.code}
-              onSelect={l => setToLocationId(l.id)}
+              onSelect={l => { setToLocationId(l.id); setToLocationLabel(l.code) }}
             />
           </div>
           <div className="flex gap-2">
@@ -133,6 +157,38 @@ export function TransfersPage() {
             <ArrowRightLeft className="h-4 w-4" /> Transferir
           </Button>
         </div>
+      </Card>
+
+      <Card padding={false}>
+        <div className="px-5 py-4 border-b border-gray-100">
+          <h2 className="text-sm font-semibold text-gray-900">Transferencias recientes</h2>
+        </div>
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Producto</Th>
+              <Th>Origen</Th>
+              <Th>Destino</Th>
+              <Th>Cantidad</Th>
+              <Th>Hora</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {!recentTransfers.length ? (
+              <EmptyRow cols={5} message="Aún no se han registrado transferencias" />
+            ) : (
+              recentTransfers.map(t => (
+                <Tr key={t.id}>
+                  <Td className="text-xs">{t.productLabel}</Td>
+                  <Td className="text-xs text-gray-500">{t.fromLabel}</Td>
+                  <Td className="text-xs text-gray-500">{t.toLabel}</Td>
+                  <Td>{fmt.number(t.quantity)}</Td>
+                  <Td className="text-xs text-gray-400">{fmt.datetime(t.at)}</Td>
+                </Tr>
+              ))
+            )}
+          </Tbody>
+        </Table>
       </Card>
 
       <Card padding={false}>

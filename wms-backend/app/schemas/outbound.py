@@ -106,6 +106,7 @@ class SalesOrderResponse(BaseModel):
     tenant_id: UUID
     warehouse_id: UUID
     customer_id: UUID
+    customer_name: Optional[str] = None
     so_number: str
     customer_po_reference: Optional[str]
     erp_reference: Optional[str]

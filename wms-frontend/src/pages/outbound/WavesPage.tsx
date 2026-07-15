@@ -161,7 +161,12 @@ export function WavesPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-gray-700">Bodega</label>
-              <select value={warehouseId} onChange={e => { setWarehouseId(e.target.value); setSelectedSOs([]) }}
+              <select value={warehouseId} onChange={e => {
+                const id = e.target.value
+                setWarehouseId(id); setSelectedSOs([])
+                const wh = warehouses?.items.find(w => w.id === id)
+                if (wh?.default_picking_method) setPickingMethod(wh.default_picking_method)
+              }}
                 className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm">
                 <option value="">Seleccionar…</option>
                 {warehouses?.items.map(w => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}

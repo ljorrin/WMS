@@ -44,6 +44,7 @@ export function Combobox<T>({
             value={open ? search : (displayLabel ?? '')}
             placeholder={displayLabel || placeholder}
             onFocus={() => setOpen(true)}
+            onClick={() => setOpen(true)}
             onBlur={() => setTimeout(() => setOpen(false), 150)}
             onChange={e => setSearch(e.target.value)}
             className={cn(

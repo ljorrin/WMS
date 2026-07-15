@@ -11,8 +11,8 @@ import type {
   Warehouse, MovementRow, BatchListResponse,
   QualityInspection, PackTask, ReturnOrder,
   ThroughputResponse, InboundThroughputPoint, OutboundThroughputPoint,
-  Product, Supplier, LocationLite,
-  ReturnToVendor, CycleCount, InventoryReservation,
+  Product, Supplier, Customer, BoxType, LocationLite,
+  ReturnToVendor, CycleCount, InventoryReservation, Company,
 } from '@/types'
 
 interface ListResponse<T> { items: T[]; total: number; page: number; page_size: number }
@@ -62,18 +62,43 @@ export const warehouseApi = {
 
   get: (id: string) =>
     api.get<Warehouse>(`/warehouses/${id}`).then(r => r.data),
+
+  create: (data: unknown) =>
+    api.post<Warehouse>('/warehouses', data).then(r => r.data),
+
+  update: (id: string, data: unknown) =>
+    api.put<Warehouse>(`/warehouses/${id}`, data).then(r => r.data),
+
+  listCompanies: () =>
+    api.get<Company[]>('/warehouses/companies').then(r => r.data),
 }
 
 // ── MASTER DATA ───────────────────────────────────────
 export const masterApi = {
-  getProducts: (params?: Record<string, unknown>) =>
-    api.get<ListResponse<Product>>('/master/products', { params }).then(r => r.data),
+  getProducts: (params?: Record<string, unknown>) => {
+    const p = params ? Object.fromEntries(Object.entries(params).filter(([_, v]) => v !== '')) : {}
+    return api.get<ListResponse<Product>>('/master/products', { params: p }).then(r => r.data)
+  },
 
-  getSuppliers: (params?: Record<string, unknown>) =>
-    api.get<ListResponse<Supplier>>('/master/suppliers', { params }).then(r => r.data),
+  getSuppliers: (params?: Record<string, unknown>) => {
+    const p = params ? Object.fromEntries(Object.entries(params).filter(([_, v]) => v !== '')) : {}
+    return api.get<ListResponse<Supplier>>('/master/suppliers', { params: p }).then(r => r.data)
+  },
 
-  getLocations: (params?: Record<string, unknown>) =>
-    api.get<ListResponse<LocationLite>>('/master/locations', { params }).then(r => r.data),
+  getCustomers: (params?: Record<string, unknown>) => {
+    const p = params ? Object.fromEntries(Object.entries(params).filter(([_, v]) => v !== '')) : {}
+    return api.get<ListResponse<Customer>>('/master/customers', { params: p }).then(r => r.data)
+  },
+
+  getBoxTypes: (params?: Record<string, unknown>) => {
+    const p = params ? Object.fromEntries(Object.entries(params).filter(([_, v]) => v !== '')) : {}
+    return api.get<ListResponse<BoxType>>('/master/box-types', { params: p }).then(r => r.data)
+  },
+
+  getLocations: (params?: Record<string, unknown>) => {
+    const p = params ? Object.fromEntries(Object.entries(params).filter(([_, v]) => v !== '')) : {}
+    return api.get<ListResponse<LocationLite>>('/master/locations', { params: p }).then(r => r.data)
+  },
 
   // Alta / edición / carga masiva (FR-010/012/013/014/015)
   createProduct: (data: unknown) =>
@@ -86,6 +111,14 @@ export const masterApi = {
     api.post<Supplier>('/master/suppliers', data).then(r => r.data),
   updateSupplier: (id: string, data: unknown) =>
     api.put<Supplier>(`/master/suppliers/${id}`, data).then(r => r.data),
+  createCustomer: (data: unknown) =>
+    api.post<Customer>('/master/customers', data).then(r => r.data),
+  updateCustomer: (id: string, data: unknown) =>
+    api.put<Customer>(`/master/customers/${id}`, data).then(r => r.data),
+  createBoxType: (data: unknown) =>
+    api.post<BoxType>('/master/box-types', data).then(r => r.data),
+  updateBoxType: (id: string, data: unknown) =>
+    api.put<BoxType>(`/master/box-types/${id}`, data).then(r => r.data),
   createLocation: (data: unknown) =>
     api.post<LocationLite>('/master/locations', data).then(r => r.data),
   updateLocation: (id: string, data: unknown) =>
@@ -246,11 +279,14 @@ export const inboundApi = {
   createRTV: (data: unknown) =>
     api.post<ReturnToVendor>('/inbound/rtv', data).then(r => r.data),
 
+  approveRTV: (id: string) =>
+    api.post(`/inbound/rtv/${id}/approve`).then(r => r.data),
+
   shipRTV: (id: string, data: unknown) =>
     api.post(`/inbound/rtv/${id}/ship`, data).then(r => r.data),
 
-  creditRTV: (id: string, data: unknown) =>
-    api.post(`/inbound/rtv/${id}/credit`, data).then(r => r.data),
+  creditRTV: (id: string, params: { credit_memo_number: string, credit_received: number }) =>
+    api.post(`/inbound/rtv/${id}/credit`, null, { params }).then(r => r.data),
 }
 
 // ── OUTBOUND ──────────────────────────────────────────
@@ -300,6 +336,12 @@ export const outboundApi = {
 
   completePack: (id: string, data: unknown) =>
     api.post(`/outbound/packing/${id}/complete`, data).then(r => r.data),
+
+  getPackTaskPackingListPdf: (id: string) =>
+    api.get<Blob>(`/outbound/packing/${id}/packing-list`, { responseType: 'blob' }).then(r => r.data),
+
+  getPackTaskLabelPdf: (id: string) =>
+    api.get<Blob>(`/outbound/packing/${id}/label`, { responseType: 'blob' }).then(r => r.data),
 
   // Shipments
   getShipments: (params?: Record<string, unknown>) =>

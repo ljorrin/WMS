@@ -346,6 +346,22 @@ class InboundService:
             # Sin QC: ir directo a putaway
             await self._generate_putaway_tasks(grn)
             await self.grn_repo.update_status(grn_id, GRNStatus.PUTAWAY_IN_PROGRESS)
+        else:
+            # Requiere QC: generar automáticamente la inspección pendiente
+            # (pre-cargada con lo recibido) para que el inspector la vea en
+            # el listado de Control de Calidad y la resuelva. Antes de esto,
+            # el GRN quedaba en CONFIRMED sin ninguna QI y sin forma de avanzar.
+            lines_data = [
+                dict(
+                    grn_line_id=line.id,
+                    product_id=line.product_id,
+                    quantity_inspected=line.quantity_received,
+                    quantity_approved=line.quantity_received - (line.quantity_rejected or Decimal("0")),
+                    quantity_rejected=line.quantity_rejected or Decimal("0"),
+                )
+                for line in grn.lines
+            ]
+            await self.create_quality_inspection(grn_id, lines_data=lines_data)
 
         # Notificar la recepción al ERP (best-effort; no rompe el flujo si no está configurado)
         try:
@@ -661,12 +677,29 @@ class InboundService:
         log.info("rtv.created", rtv_id=str(rtv.id))
         return rtv
 
+    async def approve_rtv(self, rtv_id: UUID) -> None:
+        """Aprobar una RTV pendiente, habilitando su despacho al proveedor."""
+        from app.models.inbound import RTVStatus
+        rtv = await self.rtv_repo.get_by_id(rtv_id)
+        if not rtv:
+            raise InboundServiceError(f"RTV {rtv_id} no encontrado.")
+        if rtv.status != RTVStatus.PENDING:
+            raise InboundServiceError(
+                f"La RTV debe estar PENDING para aprobar. Estado: {rtv.status}"
+            )
+        await self.rtv_repo.update_status(rtv_id, RTVStatus.APPROVED)
+        log.info("rtv.approved", rtv_id=str(rtv_id))
+
     async def ship_rtv(self, rtv_id: UUID) -> None:
         """Marcar RTV como despachado al proveedor."""
         from app.models.inbound import RTVStatus
         rtv = await self.rtv_repo.get_by_id(rtv_id)
         if not rtv:
             raise InboundServiceError(f"RTV {rtv_id} no encontrado.")
+        if rtv.status != RTVStatus.APPROVED:
+            raise InboundServiceError(
+                f"La RTV debe estar APPROVED para despachar. Estado: {rtv.status}"
+            )
         await self.rtv_repo.update_status(rtv_id, RTVStatus.SHIPPED)
 
     async def confirm_rtv_credit(

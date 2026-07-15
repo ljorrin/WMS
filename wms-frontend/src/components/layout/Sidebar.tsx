@@ -3,7 +3,7 @@ import {
   LayoutDashboard, Package, TruckIcon, SendHorizonal,
   BarChart3, Settings, LogOut, ChevronDown, Warehouse,
   ClipboardList, Boxes, Route, PackageCheck, Ship,
-  RefreshCw, AlertCircle, ScanLine, Database, Users, MapPin,
+  RefreshCw, AlertCircle, ScanLine, Database, Users, UserCheck, MapPin, Box,
   Undo2, ListChecks, ArrowRightLeft,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
@@ -52,6 +52,8 @@ const navItems: NavItem[] = [
     label: 'Maestros', icon: Database, children: [
       { label: 'Productos', icon: Package, href: '/master/products' },
       { label: 'Proveedores', icon: Users, href: '/master/suppliers' },
+      { label: 'Clientes', icon: UserCheck, href: '/master/customers' },
+      { label: 'Tipos de Caja', icon: Box, href: '/master/box-types' },
       { label: 'Ubicaciones', icon: MapPin, href: '/master/locations' },
     ],
   },

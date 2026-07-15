@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, CheckCircle, PlayCircle, Trash2 } from 'lucide-react'
-import { inventoryApi, warehouseApi } from '@/api/endpoints'
+import { inventoryApi, warehouseApi, masterApi } from '@/api/endpoints'
 import { useReasonCodes } from '@/hooks/useReasonCodes'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -10,18 +10,22 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Table, Thead, Tbody, Tr, Th, Td, EmptyRow } from '@/components/ui/Table'
 import { Pagination } from '@/components/ui/Pagination'
+import { Combobox } from '@/components/ui/Combobox'
+import type { Product, LocationLite } from '@/types'
 import { fmt } from '@/utils/format'
 import toast from 'react-hot-toast'
 const PAGE_SIZE = 20
 
 interface DraftLine {
   product_id: string
+  product_label: string
   location_id: string
+  location_label: string
   quantity_system: string
   quantity_physical: string
 }
 
-const emptyLine = (): DraftLine => ({ product_id: '', location_id: '', quantity_system: '', quantity_physical: '' })
+const emptyLine = (): DraftLine => ({ product_id: '', product_label: '', location_id: '', location_label: '', quantity_system: '', quantity_physical: '' })
 
 export function AdjustmentsPage() {
   const [page, setPage] = useState(1)
@@ -202,12 +206,34 @@ export function AdjustmentsPage() {
               {lines.map((l, i) => (
                 <div key={i} className="grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-4">
-                    <Input placeholder="Product ID (UUID)" value={l.product_id}
-                      onChange={e => updateLine(i, 'product_id', e.target.value)} />
+                    <Combobox<Product>
+                      placeholder="Buscar producto…"
+                      value={l.product_id}
+                      displayLabel={l.product_label}
+                      queryKey={`products-adj-${i}`}
+                      fetcher={s => masterApi.getProducts({ search: s, page_size: 20 })}
+                      getKey={x => x.id}
+                      getLabel={x => `${x.sku} — ${x.name}`}
+                      onSelect={x => {
+                        updateLine(i, 'product_id', x.id);
+                        updateLine(i, 'product_label', `${x.sku} — ${x.name}`);
+                      }}
+                    />
                   </div>
                   <div className="col-span-3">
-                    <Input placeholder="Location ID" value={l.location_id}
-                      onChange={e => updateLine(i, 'location_id', e.target.value)} />
+                    <Combobox<LocationLite>
+                      placeholder="Buscar ubicación…"
+                      value={l.location_id}
+                      displayLabel={l.location_label}
+                      queryKey={`locations-adj-${warehouseId}-${i}`}
+                      fetcher={s => masterApi.getLocations({ search: s, warehouse_id: warehouseId, page_size: 20 })}
+                      getKey={x => x.id}
+                      getLabel={x => x.code}
+                      onSelect={x => {
+                        updateLine(i, 'location_id', x.id);
+                        updateLine(i, 'location_label', x.code);
+                      }}
+                    />
                   </div>
                   <div className="col-span-2">
                     <Input type="number" placeholder="Sistema" value={l.quantity_system}

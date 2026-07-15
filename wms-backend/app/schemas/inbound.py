@@ -41,6 +41,8 @@ class PurchaseOrderLineResponse(BaseModel):
     id: UUID
     purchase_order_id: UUID
     product_id: UUID
+    product_sku: Optional[str] = None
+    product_name: Optional[str] = None
     line_number: int
     quantity_ordered: Decimal
     quantity_received: Decimal
@@ -283,11 +285,14 @@ class GRNLineResponse(BaseModel):
     id: UUID
     grn_id: UUID
     product_id: UUID
+    product_sku: Optional[str] = None
+    product_name: Optional[str] = None
     line_number: int
     quantity_received: Decimal
     quantity_rejected: Decimal
     quantity_accepted: Optional[Decimal] = None
     location_id: Optional[UUID] = None
+    location_code: Optional[str] = None
     batch_number: Optional[str] = None
     expiry_date: Optional[date] = None
     uom: Optional[str] = None
@@ -309,6 +314,11 @@ class GRNCreate(BaseModel):
     # Cadena de frío a nivel de recibo
     ambient_temp_celsius: Optional[Decimal] = Field(None, decimal_places=2)
     product_temp_celsius: Optional[Decimal] = Field(None, decimal_places=2)
+    requires_qc: bool = Field(
+        False,
+        description="Forzar control de calidad manualmente, además de la regla "
+        "automática por ruptura de cadena de frío.",
+    )
     notes: Optional[str] = Field(None, max_length=2000)
     lines: List[GRNLineCreate] = Field(..., min_length=1)
 
@@ -448,6 +458,7 @@ class PutawayTaskResponse(BaseModel):
     grn_id: Optional[UUID] = None
     grn_line_id: Optional[UUID] = None
     product_id: UUID
+    product_sku: Optional[str] = None
     product_name: Optional[str] = None
     batch_id: Optional[UUID] = None
     quantity: Decimal
@@ -508,6 +519,7 @@ class RTVResponse(BaseModel):
     tenant_id: UUID
     grn_id: Optional[UUID]
     supplier_id: UUID
+    supplier_name: Optional[str] = None
     warehouse_id: UUID
     rtv_number: str
     status: RTVStatus

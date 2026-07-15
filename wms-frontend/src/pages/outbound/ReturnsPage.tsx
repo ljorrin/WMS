@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, PackageOpen, RotateCcw } from 'lucide-react'
-import { outboundApi, warehouseApi } from '@/api/endpoints'
+import { Plus, PackageOpen, RotateCcw, X } from 'lucide-react'
+import { outboundApi, warehouseApi, masterApi } from '@/api/endpoints'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -9,8 +9,9 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Table, Thead, Tbody, Tr, Th, Td, EmptyRow } from '@/components/ui/Table'
 import { Pagination } from '@/components/ui/Pagination'
+import { Combobox } from '@/components/ui/Combobox'
 import { fmt } from '@/utils/format'
-import type { ReturnOrder } from '@/types'
+import type { ReturnOrder, Customer, SalesOrder } from '@/types'
 import toast from 'react-hot-toast'
 
 const PAGE_SIZE = 20
@@ -20,15 +21,18 @@ const RETURN_TYPES = [
   { value: 'credit', label: 'Nota de crédito' },
 ]
 
+const STATUS_FILTERS = ['', 'requested', 'approved', 'in_transit', 'received', 'inspected', 'completed', 'cancelled']
+
 export function ReturnsPage() {
   const [page, setPage] = useState(1)
   const [createOpen, setCreateOpen] = useState(false)
   const [target, setTarget] = useState<ReturnOrder | null>(null)
+  const [status, setStatus] = useState('')
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['returns', page],
-    queryFn: () => outboundApi.getReturns({ page, page_size: PAGE_SIZE }),
+    queryKey: ['returns', page, status],
+    queryFn: () => outboundApi.getReturns({ page, page_size: PAGE_SIZE, ...(status ? { status } : {}) }),
     placeholderData: prev => prev,
   })
 
@@ -40,7 +44,9 @@ export function ReturnsPage() {
   // Form crear RMA
   const [warehouseId, setWarehouseId] = useState('')
   const [customerId, setCustomerId] = useState('')
+  const [customerLabel, setCustomerLabel] = useState('')
   const [soId, setSoId] = useState('')
+  const [soLabel, setSoLabel] = useState('')
   const [reason, setReason] = useState('')
   const [returnType, setReturnType] = useState('refund')
   const [createNotes, setCreateNotes] = useState('')
@@ -52,7 +58,7 @@ export function ReturnsPage() {
   const [refundAmount, setRefundAmount] = useState('0')
 
   const resetCreate = () => {
-    setWarehouseId(''); setCustomerId(''); setSoId(''); setReason(''); setReturnType('refund'); setCreateNotes('')
+    setWarehouseId(''); setCustomerId(''); setCustomerLabel(''); setSoId(''); setSoLabel(''); setReason(''); setReturnType('refund'); setCreateNotes('')
   }
   const resetReceive = () => {
     setInspectionNotes(''); setRestockEligible(false); setRestockLocation(''); setRefundAmount('0')
@@ -93,14 +99,22 @@ export function ReturnsPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Devoluciones (RMA)</h1>
           <p className="text-sm text-gray-500">{data?.total ?? 0} devoluciones</p>
         </div>
-        <Button size="sm" onClick={() => setCreateOpen(true)}>
-          <Plus className="h-4 w-4" /> Nueva RMA
-        </Button>
+        <div className="flex items-center gap-3">
+          <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }}
+            className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 capitalize">
+            {STATUS_FILTERS.map(s => (
+              <option key={s} value={s}>{s ? s.replace(/_/g, ' ') : 'Todos los estados'}</option>
+            ))}
+          </select>
+          <Button size="sm" onClick={() => setCreateOpen(true)}>
+            <Plus className="h-4 w-4" /> Nueva RMA
+          </Button>
+        </div>
       </div>
 
       <Card padding={false}>
@@ -190,10 +204,38 @@ export function ReturnsPage() {
               </select>
             </div>
           </div>
-          <Input label="Customer ID (UUID)" value={customerId}
-            onChange={e => setCustomerId(e.target.value)} placeholder="UUID del cliente" />
-          <Input label="Sales Order ID (opcional)" value={soId}
-            onChange={e => setSoId(e.target.value)} placeholder="UUID de la orden original" />
+          <Combobox<Customer>
+            label="Cliente"
+            placeholder="Buscar por nombre o ID…"
+            value={customerId}
+            displayLabel={customerLabel}
+            queryKey="customers-search"
+            fetcher={s => masterApi.getCustomers({ search: s, page_size: 20 })}
+            getKey={c => c.id}
+            getLabel={c => c.name}
+            onSelect={c => { setCustomerId(c.id); setCustomerLabel(c.name) }}
+          />
+          <div className="flex gap-2 items-end">
+            <div className="flex-1">
+              <Combobox<SalesOrder>
+                label="Orden de Venta (opcional)"
+                placeholder={customerId ? "Buscar orden de este cliente…" : "Selecciona un cliente primero…"}
+                value={soId}
+                displayLabel={soLabel}
+                queryKey={`sos-search-${customerId}`}
+                fetcher={s => outboundApi.getSOs({ search: s, customer_id: customerId || undefined, page_size: 20 })}
+                getKey={so => so.id}
+                getLabel={so => `${so.so_number} - ${fmt.date(so.order_date)}`}
+                onSelect={so => { setSoId(so.id); setSoLabel(so.so_number) }}
+                disabled={!customerId}
+              />
+            </div>
+            {soId && (
+              <Button size="sm" variant="secondary" onClick={() => { setSoId(''); setSoLabel('') }} title="Quitar orden" className="px-2">
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
           <Input label="Motivo" value={reason}
             onChange={e => setReason(e.target.value)} placeholder="Motivo de la devolución (mín. 3 caracteres)" />
           <Input label="Notas (opcional)" value={createNotes}

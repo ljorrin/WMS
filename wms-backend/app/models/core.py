@@ -341,7 +341,12 @@ class Warehouse(WMSTenantBase):
     # Configuracion operacional
     picking_strategy: Mapped[str] = mapped_column(
         String(20), default="FEFO",
-        comment="Estrategia de picking: FEFO | FIFO | LIFO"
+        comment="Estrategia de rotacion de inventario: FEFO | FIFO | LIFO"
+    )
+    default_picking_method: Mapped[str] = mapped_column(
+        String(20), default="discrete",
+        comment="Metodo de picking por defecto al crear una Wave: "
+        "discrete | batch | zone | cluster (ver PickingMethod en models/outbound.py)"
     )
     has_cold_storage: Mapped[bool] = mapped_column(Boolean, default=False)
     has_hazmat_zone: Mapped[bool] = mapped_column(Boolean, default=False)

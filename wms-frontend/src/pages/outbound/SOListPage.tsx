@@ -163,7 +163,9 @@ export function SOListPage() {
                       <span className="font-mono font-medium text-primary-700">{so.so_number}</span>
                     </Td>
                     <Td><Badge status={so.status} /></Td>
-                    <Td className="text-gray-600 text-xs">{so.customer_id}</Td>
+                    <Td className="text-gray-600 text-xs">
+                      {so.customer_name ?? so.customer_id}
+                    </Td>
                     <Td><PriorityLabel p={so.priority} /></Td>
                     <Td className="text-xs">{fmt.date(so.order_date)}</Td>
                     <Td className={cn('text-xs', isOverdue && 'text-red-600 font-semibold')}>

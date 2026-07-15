@@ -148,18 +148,30 @@ class SalesOrderRepository:
             )
         ).scalar_one()
 
+        from app.models.master_data import Customer
+        
         rows = (
             await self.db.execute(
-                select(SalesOrder)
+                select(
+                    SalesOrder,
+                    Customer.name.label("customer_name")
+                )
+                .join(Customer, SalesOrder.customer_id == Customer.id)
                 .options(selectinload(SalesOrder.lines))
                 .where(and_(*filters))
                 .order_by(SalesOrder.priority.asc(), SalesOrder.order_date.asc())
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             )
-        ).scalars().all()
+        ).all()
 
-        return list(rows), total
+        sos = []
+        for row in rows:
+            so = row.SalesOrder
+            so.customer_name = row.customer_name
+            sos.append(so)
+
+        return sos, total
 
     async def update_status(self, so_id: UUID, status: SOStatus, **extra) -> None:
         now = datetime.now(timezone.utc)
@@ -659,6 +671,13 @@ class PackTaskRepository:
                 cycle_time_seconds=cycle_time,
                 updated_at=now,
             )
+        )
+
+    async def mark_label_printed(self, task_id: UUID) -> None:
+        await self.db.execute(
+            update(PackTask)
+            .where(and_(PackTask.id == task_id, PackTask.tenant_id == self.tenant_id))
+            .values(label_printed=True, updated_at=datetime.now(timezone.utc))
         )
 
 

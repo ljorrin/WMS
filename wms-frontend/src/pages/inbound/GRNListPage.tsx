@@ -13,16 +13,18 @@ import { GRNFormModal } from './GRNFormModal'
 import { GRNDetailModal } from './GRNDetailModal'
 
 const PAGE_SIZE = 20
+const STATUS_FILTERS = ['', 'in_progress', 'confirmed', 'cancelled']
 
 export function GRNListPage() {
   const [page, setPage] = useState(1)
   const [creating, setCreating] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
+  const [status, setStatus] = useState('')
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['grns', page],
-    queryFn: () => inboundApi.getGRNs({ page, page_size: PAGE_SIZE }),
+    queryKey: ['grns', page, status],
+    queryFn: () => inboundApi.getGRNs({ page, page_size: PAGE_SIZE, ...(status ? { status } : {}) }),
     placeholderData: prev => prev,
   })
 
@@ -36,14 +38,22 @@ export function GRNListPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Recepciones (GRN)</h1>
           <p className="text-sm text-gray-500">{data?.total ?? 0} recepciones</p>
         </div>
-        <Button size="sm" onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" /> Nueva recepción
-        </Button>
+        <div className="flex items-center gap-3">
+          <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }}
+            className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 capitalize">
+            {STATUS_FILTERS.map(s => (
+              <option key={s} value={s}>{s ? s.replace(/_/g, ' ') : 'Todos los estados'}</option>
+            ))}
+          </select>
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" /> Nueva recepción
+          </Button>
+        </div>
       </div>
 
       <Card padding={false}>

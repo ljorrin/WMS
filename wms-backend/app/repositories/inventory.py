@@ -602,7 +602,11 @@ class ReservationRepository:
         offset: int = 0,
         limit: int = 50,
     ) -> tuple[Sequence[InventoryReservation], int]:
-        stmt = select(InventoryReservation).where(InventoryReservation.tenant_id == tenant_id)
+        stmt = (
+            select(InventoryReservation, Product.name.label("product_name"))
+            .join(Product, InventoryReservation.product_id == Product.id)
+            .where(InventoryReservation.tenant_id == tenant_id)
+        )
         if warehouse_id:
             stmt = stmt.where(InventoryReservation.warehouse_id == warehouse_id)
         if is_active is not None:
@@ -612,7 +616,14 @@ class ReservationRepository:
         total = (await self.db.execute(count_stmt)).scalar_one()
 
         stmt = stmt.offset(offset).limit(limit).order_by(InventoryReservation.reserved_at.desc())
-        items = (await self.db.execute(stmt)).scalars().all()
+        results = (await self.db.execute(stmt)).all()
+
+        items = []
+        for row in results:
+            reservation = row.InventoryReservation
+            reservation.product_name = row.product_name
+            items.append(reservation)
+
         return items, total
 
     async def get_by_id(self, reservation_id: uuid.UUID, tenant_id: uuid.UUID) -> Optional[InventoryReservation]:

@@ -13,16 +13,19 @@ import { PODetailModal } from './PODetailModal'
 import { POEditModal } from './POEditModal'
 import type { PurchaseOrder } from '@/types'
 
+const STATUS_FILTERS = ['', 'draft', 'confirmed', 'partially_received', 'received', 'closed', 'cancelled']
+
 export function POListPage() {
   const [page, setPage] = useState(1)
   const [creating, setCreating] = useState(false)
   const [detailId, setDetailId] = useState<string | null>(null)
   const [editing, setEditing] = useState<PurchaseOrder | null>(null)
+  const [status, setStatus] = useState('')
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['pos', page],
-    queryFn: () => inboundApi.getPOs({ page, page_size: 20 }),
+    queryKey: ['pos', page, status],
+    queryFn: () => inboundApi.getPOs({ page, page_size: 20, ...(status ? { status } : {}) }),
     placeholderData: prev => prev,
   })
 
@@ -53,14 +56,22 @@ export function POListPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Órdenes de Compra</h1>
           <p className="text-sm text-gray-500">{data?.total ?? 0} órdenes</p>
         </div>
-        <Button size="sm" onClick={() => setCreating(true)}>
-          <Plus className="h-4 w-4" /> Nueva OC
-        </Button>
+        <div className="flex items-center gap-3">
+          <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }}
+            className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 capitalize">
+            {STATUS_FILTERS.map(s => (
+              <option key={s} value={s}>{s ? s.replace(/_/g, ' ') : 'Todos los estados'}</option>
+            ))}
+          </select>
+          <Button size="sm" onClick={() => setCreating(true)}>
+            <Plus className="h-4 w-4" /> Nueva OC
+          </Button>
+        </div>
       </div>
 
       <Card padding={false}>

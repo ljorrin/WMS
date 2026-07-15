@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { useQuery, useMutation } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   User as UserIcon, KeyRound, Warehouse as WarehouseIcon,
   ShieldCheck, Plug, CheckCircle2, AlertCircle, Building2, BookOpen,
-  Plus, Trash2, Lock, Smartphone,
+  Plus, Trash2, Lock, Smartphone, Pencil,
 } from 'lucide-react'
 import { authApi, warehouseApi, integrationsApi } from '@/api/endpoints'
 import { useAuthStore } from '@/store/authStore'
@@ -12,11 +12,20 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
+import { Modal } from '@/components/ui/Modal'
 import { Table, Thead, Tbody, Tr, Th, Td, EmptyRow } from '@/components/ui/Table'
+import type { Warehouse } from '@/types'
 import toast from 'react-hot-toast'
+
+const WAREHOUSE_TYPES = [
+  'distribution_center', 'factory_warehouse', 'transit_warehouse', 'return_center',
+  'cold_storage', 'bonded_warehouse', 'third_party', 'retail_backroom', 'virtual',
+]
+const WAREHOUSE_STATUSES = ['active', 'inactive', 'maintenance']
 
 export function SettingsPage() {
   const { user } = useAuthStore()
+  const qc = useQueryClient()
   const [activeTab, setActiveTab] = useState<'perfil' | 'bodegas' | 'integraciones' | 'nomencladores'>('perfil')
 
   // Gestión de razones de ajuste
@@ -92,6 +101,73 @@ export function SettingsPage() {
     queryFn: () => warehouseApi.list({ page_size: 100 }),
     enabled: activeTab === 'bodegas'
   })
+
+  const { data: companies } = useQuery({
+    queryKey: ['companies'],
+    queryFn: () => warehouseApi.listCompanies(),
+    enabled: activeTab === 'bodegas' && !!user?.is_superadmin,
+  })
+
+  const [whOpen, setWhOpen] = useState(false)
+  const [whEditing, setWhEditing] = useState<Warehouse | null>(null)
+  const [whCode, setWhCode] = useState('')
+  const [whName, setWhName] = useState('')
+  const [whCompanyId, setWhCompanyId] = useState('')
+  const [whType, setWhType] = useState('distribution_center')
+  const [whStatus, setWhStatus] = useState('active')
+  const [whCity, setWhCity] = useState('')
+  const [whProvince, setWhProvince] = useState('')
+  const [whCountry, setWhCountry] = useState('PA')
+  const [whPickingStrategy, setWhPickingStrategy] = useState('FEFO')
+  const [whDefaultPickingMethod, setWhDefaultPickingMethod] = useState('discrete')
+  const [whColdStorage, setWhColdStorage] = useState(false)
+
+  const resetWhForm = () => {
+    setWhCode(''); setWhName(''); setWhCompanyId(''); setWhType('distribution_center')
+    setWhStatus('active'); setWhCity(''); setWhProvince(''); setWhCountry('PA')
+    setWhPickingStrategy('FEFO'); setWhDefaultPickingMethod('discrete')
+    setWhColdStorage(false); setWhEditing(null)
+  }
+
+  const openCreateWh = () => { resetWhForm(); setWhOpen(true) }
+  const openEditWh = (w: Warehouse) => {
+    setWhEditing(w)
+    setWhCode(w.code); setWhName(w.name); setWhType(w.type); setWhStatus(w.status)
+    setWhCity(w.city ?? ''); setWhProvince(w.province ?? ''); setWhCountry(w.country)
+    setWhPickingStrategy(w.picking_strategy)
+    setWhDefaultPickingMethod(w.default_picking_method ?? 'discrete')
+    setWhColdStorage(w.has_cold_storage)
+    setWhOpen(true)
+  }
+
+  const saveWhMut = useMutation({
+    mutationFn: () => {
+      if (whEditing) {
+        return warehouseApi.update(whEditing.id, {
+          name: whName, type: whType, status: whStatus,
+          city: whCity || undefined, province: whProvince || undefined,
+          picking_strategy: whPickingStrategy, default_picking_method: whDefaultPickingMethod,
+          has_cold_storage: whColdStorage,
+        })
+      }
+      return warehouseApi.create({
+        code: whCode, name: whName, company_id: whCompanyId, type: whType,
+        city: whCity || undefined, province: whProvince || undefined, country: whCountry,
+        picking_strategy: whPickingStrategy, default_picking_method: whDefaultPickingMethod,
+        has_cold_storage: whColdStorage,
+      })
+    },
+    onSuccess: () => {
+      toast.success(whEditing ? 'Bodega actualizada' : 'Bodega creada')
+      qc.invalidateQueries({ queryKey: ['warehouses'] })
+      setWhOpen(false); resetWhForm()
+    },
+    onError: () => toast.error('No se pudo guardar la bodega'),
+  })
+
+  const canSaveWh = whEditing
+    ? whName.trim().length > 0
+    : whCode.trim().length > 0 && whName.trim().length > 0 && !!whCompanyId
 
   // -- Integrations --
   const { data: integrations, isLoading: intLoading } = useQuery({
@@ -286,11 +362,21 @@ export function SettingsPage() {
         {/* --- BODEGAS --- */}
         {activeTab === 'bodegas' && (
           <Card padding={false}>
-            <div className="px-5 py-4 border-b border-gray-100">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-lg">
                 <WarehouseIcon className="h-5 w-5 text-gray-400" /> Bodegas Configuradas ({warehouses?.total ?? 0})
               </CardTitle>
+              {user?.is_superadmin && (
+                <Button size="sm" onClick={openCreateWh}>
+                  <Plus className="h-4 w-4" /> Nueva Bodega
+                </Button>
+              )}
             </div>
+            {!user?.is_superadmin && (
+              <p className="px-5 pt-3 text-xs text-gray-400">
+                Solo un superadministrador puede crear o editar bodegas.
+              </p>
+            )}
             <Table>
               <Thead>
                 <Tr>
@@ -301,6 +387,7 @@ export function SettingsPage() {
                   <Th>Cadena de Frío</Th>
                   <Th>Estrategia de Picking</Th>
                   <Th>Estado</Th>
+                  {user?.is_superadmin && <Th>Acciones</Th>}
                 </Tr>
               </Thead>
               <Tbody>
@@ -313,7 +400,7 @@ export function SettingsPage() {
                     </Tr>
                   ))
                 ) : !warehouses?.items.length ? (
-                  <EmptyRow cols={7} message="No hay bodegas configuradas en el sistema" />
+                  <EmptyRow cols={user?.is_superadmin ? 8 : 7} message="No hay bodegas configuradas en el sistema" />
                 ) : (
                   warehouses.items.map(w => (
                     <Tr key={w.id}>
@@ -328,6 +415,14 @@ export function SettingsPage() {
                       </Td>
                       <Td className="text-xs text-gray-500 capitalize">{w.picking_strategy?.replace(/_/g, ' ')}</Td>
                       <Td><Badge status={w.status} /></Td>
+                      {user?.is_superadmin && (
+                        <Td>
+                          <button onClick={() => openEditWh(w)} title="Editar"
+                            className="text-gray-500 hover:text-primary-700 transition-colors">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        </Td>
+                      )}
                     </Tr>
                   ))
                 )}
@@ -335,6 +430,86 @@ export function SettingsPage() {
             </Table>
           </Card>
         )}
+
+        <Modal
+          open={whOpen}
+          onClose={() => { setWhOpen(false); resetWhForm() }}
+          title={whEditing ? `Editar bodega ${whEditing.code}` : 'Nueva bodega'}
+          size="lg"
+          footer={
+            <>
+              <Button variant="secondary" size="sm" onClick={() => { setWhOpen(false); resetWhForm() }}>Cancelar</Button>
+              <Button size="sm" disabled={!canSaveWh} loading={saveWhMut.isPending}
+                onClick={() => saveWhMut.mutate()}>
+                {whEditing ? 'Guardar cambios' : 'Crear bodega'}
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input label="Código *" value={whCode} onChange={e => setWhCode(e.target.value)}
+                placeholder="Ej: PTY-CD" disabled={!!whEditing} />
+              <Input label="Nombre *" value={whName} onChange={e => setWhName(e.target.value)}
+                placeholder="Nombre de la bodega" />
+            </div>
+            {!whEditing && (
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700">Empresa *</label>
+                <select value={whCompanyId} onChange={e => setWhCompanyId(e.target.value)}
+                  className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm">
+                  <option value="">Seleccionar…</option>
+                  {companies?.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700">Tipo de bodega</label>
+                <select value={whType} onChange={e => setWhType(e.target.value)}
+                  className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm capitalize">
+                  {WAREHOUSE_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+                </select>
+              </div>
+              {whEditing && (
+                <div className="flex flex-col gap-1">
+                  <label className="text-sm font-medium text-gray-700">Estado</label>
+                  <select value={whStatus} onChange={e => setWhStatus(e.target.value)}
+                    className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm capitalize">
+                    {WAREHOUSE_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input label="Ciudad" value={whCity} onChange={e => setWhCity(e.target.value)} placeholder="Opcional" />
+              <Input label="Provincia" value={whProvince} onChange={e => setWhProvince(e.target.value)} placeholder="Opcional" />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700">Rotación de inventario</label>
+                <select value={whPickingStrategy} onChange={e => setWhPickingStrategy(e.target.value)}
+                  className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm">
+                  {['FEFO', 'FIFO', 'LIFO'].map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <p className="text-xs text-gray-400">Qué lote sale primero (vencimiento/antigüedad).</p>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700">Método de picking por defecto</label>
+                <select value={whDefaultPickingMethod} onChange={e => setWhDefaultPickingMethod(e.target.value)}
+                  className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm capitalize">
+                  {['discrete', 'batch', 'zone', 'cluster'].map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+                <p className="text-xs text-gray-400">Precarga el método al crear una Wave (se puede cambiar por wave).</p>
+              </div>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" className="rounded" checked={whColdStorage}
+                onChange={e => setWhColdStorage(e.target.checked)} />
+              Tiene cadena de frío
+            </label>
+          </div>
+        </Modal>
 
         {/* --- INTEGRACIONES --- */}
         {activeTab === 'integraciones' && (

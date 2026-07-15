@@ -52,8 +52,17 @@ api.interceptors.response.use(
         toast.error(detail)
       }
     } else if (status === 409) {
-      const data = error.response?.data as { detail?: string }
-      toast.error(data?.detail ?? 'Conflicto de estado.')
+      const data = error.response?.data as { detail?: unknown }
+      const detail = data?.detail
+      if (typeof detail === 'string') {
+        toast.error(detail)
+      } else if (detail && typeof detail === 'object') {
+        // Algunos endpoints devuelven detail como objeto, ej.
+        // { code, message, needed, available } en transferencias con stock insuficiente.
+        toast.error((detail as { message?: string }).message ?? 'Conflicto de estado.')
+      } else {
+        toast.error('Conflicto de estado.')
+      }
     } else if (status && status >= 500) {
       toast.error('Error del servidor. Por favor contacta soporte.')
     }

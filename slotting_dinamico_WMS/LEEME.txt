@@ -1,0 +1,31 @@
+SLOTTING DINÁMICO WMS — Módulo (FR-094…097)
+============================================
+10 archivos para wms-backend. La estructura de carpetas espeja la ruta destino.
+Ya fueron copiados también al repositorio; esta carpeta es una copia agrupada.
+
+NUEVOS (6):
+  app/models/slotting.py
+  app/schemas/slotting.py
+  app/services/slotting_service.py
+  app/api/v1/endpoints/slotting.py
+  alembic/versions/slotting001_dynamic_slotting.py   (down_revision: labor001)
+  tests/unit/test_slotting_service.py
+
+COMPARTIDOS / EDITADOS (4) — reemplazan a los existentes. Contienen el cableado
+de LABOR + SLOTTING juntos (los cambios de labor se habían revertido por git;
+estos archivos los restauran y añaden slotting):
+  app/core/exceptions.py     (+ excepciones labor y slotting)
+  app/models/__init__.py     (+ registro de modelos labor y slotting)
+  app/api/v1/router.py       (+ routers /labor y /slotting)
+  seeds/run_all.py           (+ permisos labor:* y slotting:* + asignación a roles)
+
+Qué hace: mide rotación (picks por SKU en ventana), clasifica ABC por Pareto,
+actualiza Product.abc_classification y genera recomendaciones de re-slot
+(A → zona dorada, C fuera de zona dorada). Endpoints bajo /api/v1/slotting.
+
+Verificado en sandbox: py_compile OK, import + configure_mappers OK,
+14 tests unitarios PASSED, smoke async apply/reject OK.
+Pendiente: alembic upgrade head contra PostgreSQL real + UI React.
+
+IMPORTANTE: haz commit en git de los 4 archivos compartidos para no perder
+el cableado (un git checkout/restore los revierte).

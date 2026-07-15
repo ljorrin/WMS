@@ -112,7 +112,7 @@ export function PutawayPage() {
                       <span className="font-medium text-gray-900 line-clamp-1" title={t.product_name ?? ''}>
                         {t.product_name ?? 'Producto Desconocido'}
                       </span>
-                      <span className="text-gray-500 text-xs font-mono">{t.product_id}</span>
+                      <span className="text-gray-500 text-xs font-mono">{t.product_sku ?? t.product_id}</span>
                     </div>
                   </Td>
                   <Td className="font-medium">{fmt.number(t.quantity)}</Td>

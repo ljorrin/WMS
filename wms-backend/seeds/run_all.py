@@ -78,6 +78,7 @@ SYSTEM_PERMISSIONS = [
     ("master:supplier:manage",   "Gestionar Proveedores",    "master"),
     ("master:customer:manage",   "Gestionar Clientes",       "master"),
     ("master:location:manage",   "Gestionar Ubicaciones",    "master"),
+    ("master:box_type:manage",   "Gestionar Tipos de Caja",  "master"),
 
     # ── Users & Roles ──
     ("admin:user:manage",        "Gestionar Usuarios",       "admin"),

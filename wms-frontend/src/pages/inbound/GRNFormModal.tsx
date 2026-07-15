@@ -12,6 +12,8 @@ import toast from 'react-hot-toast'
 interface GRNLineDraft {
   key: string
   product_id: string
+  product_sku?: string
+  product_name?: string
   location_id: string
   location_label: string
   quantity_received: string
@@ -36,6 +38,7 @@ export function GRNFormModal({ open, onClose }: { open: boolean; onClose: () => 
   const [receivingMode, setReceivingMode] = useState('standard')
   const [ambientTemp, setAmbientTemp] = useState('')
   const [productTemp, setProductTemp] = useState('')
+  const [forceQc, setForceQc] = useState(false)
   const [lines, setLines] = useState<GRNLineDraft[]>([])
 
   // Detalle de la OC seleccionada → precarga de líneas pendientes
@@ -54,6 +57,8 @@ export function GRNFormModal({ open, onClose }: { open: boolean; onClose: () => 
         .map(l => ({
           key: l.id,
           product_id: l.product_id,
+          product_sku: l.product_sku,
+          product_name: l.product_name,
           location_id: '',
           location_label: '',
           quantity_received: String(l.quantity_pending),
@@ -66,7 +71,7 @@ export function GRNFormModal({ open, onClose }: { open: boolean; onClose: () => 
 
   const reset = () => {
     setPoId(''); setPoLabel(''); setWarehouseId(''); setReceivingMode('standard')
-    setAmbientTemp(''); setProductTemp(''); setLines([])
+    setAmbientTemp(''); setProductTemp(''); setForceQc(false); setLines([])
   }
 
   const updateLine = (key: string, patch: Partial<GRNLineDraft>) =>
@@ -84,6 +89,7 @@ export function GRNFormModal({ open, onClose }: { open: boolean; onClose: () => 
       receiving_mode: receivingMode,
       ambient_temp_celsius: ambientTemp ? Number(ambientTemp) : undefined,
       product_temp_celsius: productTemp ? Number(productTemp) : undefined,
+      requires_qc: forceQc,
       lines: validLines.map(l => ({
         product_id: l.product_id,
         location_id: l.location_id,
@@ -147,6 +153,16 @@ export function GRNFormModal({ open, onClose }: { open: boolean; onClose: () => 
             onChange={e => setProductTemp(e.target.value)} placeholder="Opcional (cadena de frío)" />
         </div>
 
+        <label className="flex items-center gap-2 text-sm text-gray-700">
+          <input type="checkbox" className="rounded" checked={forceQc}
+            onChange={e => setForceQc(e.target.checked)} />
+          Forzar control de calidad para esta recepción
+        </label>
+        <p className="-mt-2 text-xs text-gray-400">
+          Además de la regla automática por ruptura de cadena de frío, marca esta opción
+          si el operador detecta algo que amerite inspección aunque la temperatura esté en rango.
+        </p>
+
         {!poId ? (
           <p className="rounded-lg border border-dashed border-gray-200 px-3 py-6 text-center text-sm text-gray-400">
             Selecciona una orden de compra para cargar sus líneas pendientes.
@@ -160,7 +176,10 @@ export function GRNFormModal({ open, onClose }: { open: boolean; onClose: () => 
             <h3 className="text-sm font-semibold text-gray-800">Líneas a recibir</h3>
             {lines.map(line => (
               <div key={line.key} className="rounded-lg border border-gray-100 bg-gray-50/50 p-3 space-y-2">
-                <p className="font-mono text-xs text-gray-500">SKU: {line.product_id}</p>
+                <p className="font-mono text-xs text-gray-500">
+                  SKU: {line.product_sku ?? line.product_id}
+                  {line.product_name && <span className="ml-2 font-sans text-gray-700 font-medium">— {line.product_name}</span>}
+                </p>
                 <div className="grid grid-cols-12 items-end gap-2">
                   <div className="col-span-5">
                     <Combobox<LocationLite>

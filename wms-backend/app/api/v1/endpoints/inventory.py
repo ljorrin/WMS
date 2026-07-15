@@ -670,6 +670,7 @@ async def list_reservations(
                 "id": str(r.id),
                 "warehouse_id": str(r.warehouse_id),
                 "product_id": str(r.product_id),
+                "product_name": r.product_name,
                 "quantity": str(r.quantity),
                 "reservation_type": r.reservation_type,
                 "reference_type": r.source_document_type,

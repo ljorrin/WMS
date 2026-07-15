@@ -25,6 +25,8 @@ from app.core.dependencies import (
 from app.models.master_data import (
     Product, ProductStatus,
     Supplier, SupplierStatus,
+    Customer, CustomerType,
+    BoxType,
     Location, LocationType, LocationStatus,
 )
 
@@ -54,6 +56,30 @@ class SupplierLite(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CustomerLite(BaseModel):
+    id: uuid.UUID
+    code: str
+    name: str
+    customer_type: CustomerType
+    is_active: bool
+    contact_email: Optional[str] = None
+    delivery_city: Optional[str] = None
+    model_config = {"from_attributes": True}
+
+
+class BoxTypeLite(BaseModel):
+    id: uuid.UUID
+    code: str
+    name: str
+    description: Optional[str] = None
+    is_active: bool
+    length_cm: Optional[Decimal] = None
+    width_cm: Optional[Decimal] = None
+    height_cm: Optional[Decimal] = None
+    max_weight_kg: Optional[Decimal] = None
+    model_config = {"from_attributes": True}
+
+
 class LocationLite(BaseModel):
     id: uuid.UUID
     code: str
@@ -72,6 +98,20 @@ class ProductListResponse(BaseModel):
 
 class SupplierListResponse(BaseModel):
     items: list[SupplierLite]
+    total: int
+    page: int
+    page_size: int
+
+
+class CustomerListResponse(BaseModel):
+    items: list[CustomerLite]
+    total: int
+    page: int
+    page_size: int
+
+
+class BoxTypeListResponse(BaseModel):
+    items: list[BoxTypeLite]
     total: int
     page: int
     page_size: int
@@ -140,6 +180,69 @@ async def list_suppliers(
     items = (await db.execute(stmt)).scalars().all()
 
     return SupplierListResponse(
+        items=items, total=total, page=pagination.page, page_size=pagination.page_size
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# Clientes
+# ─────────────────────────────────────────────────────────────
+@router.get("/customers", response_model=CustomerListResponse)
+async def list_customers(
+    db: DBDep,
+    current_user: CurrentUserDep,
+    pagination: PaginationDep,
+    search: Optional[str] = Query(None, description="Busca por código o nombre"),
+    type_filter: Optional[CustomerType] = Query(None, alias="customer_type"),
+    is_active: Optional[bool] = Query(None),
+) -> CustomerListResponse:
+    """Catalogo de clientes del tenant (para selectores de cliente en SO)."""
+    stmt = select(Customer).where(Customer.tenant_id == current_user.tenant_id)
+
+    if search:
+        stmt = stmt.where(
+            Customer.code.ilike(f"%{search}%") | Customer.name.ilike(f"%{search}%")
+        )
+    if type_filter:
+        stmt = stmt.where(Customer.customer_type == type_filter)
+    if is_active is not None:
+        stmt = stmt.where(Customer.is_active == is_active)
+
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    stmt = stmt.order_by(Customer.name).offset(pagination.offset).limit(pagination.limit)
+    items = (await db.execute(stmt)).scalars().all()
+
+    return CustomerListResponse(
+        items=items, total=total, page=pagination.page, page_size=pagination.page_size
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# Tipos de caja
+# ─────────────────────────────────────────────────────────────
+@router.get("/box-types", response_model=BoxTypeListResponse)
+async def list_box_types(
+    db: DBDep,
+    current_user: CurrentUserDep,
+    pagination: PaginationDep,
+    search: Optional[str] = Query(None, description="Busca por código o nombre"),
+    is_active: Optional[bool] = Query(None),
+) -> BoxTypeListResponse:
+    """Catalogo de tipos de caja/empaque del tenant (para el selector de Empaque)."""
+    stmt = select(BoxType).where(BoxType.tenant_id == current_user.tenant_id)
+
+    if search:
+        stmt = stmt.where(
+            BoxType.code.ilike(f"%{search}%") | BoxType.name.ilike(f"%{search}%")
+        )
+    if is_active is not None:
+        stmt = stmt.where(BoxType.is_active == is_active)
+
+    total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one()
+    stmt = stmt.order_by(BoxType.name).offset(pagination.offset).limit(pagination.limit)
+    items = (await db.execute(stmt)).scalars().all()
+
+    return BoxTypeListResponse(
         items=items, total=total, page=pagination.page, page_size=pagination.page_size
     )
 
@@ -256,6 +359,65 @@ class SupplierUpdate(BaseModel):
     payment_terms_days: Optional[int] = None
     is_blocked: Optional[bool] = None
     blocked_reason: Optional[str] = None
+    model_config = {"extra": "ignore"}
+
+
+class CustomerCreate(BaseModel):
+    code: str = Field(..., max_length=30)
+    name: str = Field(..., max_length=300)
+    legal_name: Optional[str] = Field(None, max_length=300)
+    ruc: Optional[str] = Field(None, max_length=20)
+    customer_type: CustomerType = CustomerType.RETAIL
+    is_active: bool = True
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    delivery_address: Optional[str] = None
+    delivery_city: Optional[str] = None
+    delivery_province: Optional[str] = None
+    delivery_country: str = Field("PA", max_length=2)
+    sla_lead_time_hours: Optional[int] = None
+    payment_terms_days: Optional[int] = None
+    model_config = {"extra": "ignore"}
+
+
+class CustomerUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=300)
+    legal_name: Optional[str] = None
+    ruc: Optional[str] = None
+    customer_type: Optional[CustomerType] = None
+    is_active: Optional[bool] = None
+    contact_name: Optional[str] = None
+    contact_email: Optional[str] = None
+    contact_phone: Optional[str] = None
+    delivery_address: Optional[str] = None
+    delivery_city: Optional[str] = None
+    delivery_province: Optional[str] = None
+    sla_lead_time_hours: Optional[int] = None
+    payment_terms_days: Optional[int] = None
+    model_config = {"extra": "ignore"}
+
+
+class BoxTypeCreate(BaseModel):
+    code: str = Field(..., max_length=30)
+    name: str = Field(..., max_length=100)
+    description: Optional[str] = None
+    is_active: bool = True
+    length_cm: Optional[Decimal] = None
+    width_cm: Optional[Decimal] = None
+    height_cm: Optional[Decimal] = None
+    max_weight_kg: Optional[Decimal] = None
+    model_config = {"extra": "ignore"}
+
+
+class BoxTypeUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=100)
+    description: Optional[str] = None
+    is_active: Optional[bool] = None
+    length_cm: Optional[Decimal] = None
+    width_cm: Optional[Decimal] = None
+    height_cm: Optional[Decimal] = None
+    max_weight_kg: Optional[Decimal] = None
     model_config = {"extra": "ignore"}
 
 
@@ -418,6 +580,74 @@ async def update_supplier(supplier_id: uuid.UUID, payload: SupplierUpdate, db: D
     await db.commit()
     await db.refresh(sup)
     return sup
+
+
+# ── Clientes: alta / edición ──────────────────────────────────────────────────
+@router.post(
+    "/customers", response_model=CustomerLite, status_code=status.HTTP_201_CREATED,
+    summary="Crear cliente",
+    dependencies=[Depends(require_permission("master:customer:manage"))],
+)
+async def create_customer(payload: CustomerCreate, db: DBDep, current_user: CurrentUserDep) -> CustomerLite:
+    if await _exists(db, Customer, current_user.tenant_id, "code", payload.code):
+        raise HTTPException(status_code=409, detail=f"Ya existe un cliente con código '{payload.code}'.")
+    cust = Customer(id=uuid.uuid4(), tenant_id=current_user.tenant_id, created_by_id=current_user.id,
+                    **payload.model_dump(exclude_none=True))
+    db.add(cust)
+    await db.commit()
+    await db.refresh(cust)
+    return cust
+
+
+@router.put(
+    "/customers/{customer_id}", response_model=CustomerLite, summary="Editar cliente",
+    dependencies=[Depends(require_permission("master:customer:manage"))],
+)
+async def update_customer(customer_id: uuid.UUID, payload: CustomerUpdate, db: DBDep, current_user: CurrentUserDep) -> CustomerLite:
+    cust = (await db.execute(select(Customer).where(
+        and_(Customer.id == customer_id, Customer.tenant_id == current_user.tenant_id)))).scalar_one_or_none()
+    if not cust:
+        raise HTTPException(status_code=404, detail="Cliente no encontrado.")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(cust, k, v)
+    cust.updated_by_id = current_user.id
+    await db.commit()
+    await db.refresh(cust)
+    return cust
+
+
+# ── Tipos de caja: alta / edición ─────────────────────────────────────────────
+@router.post(
+    "/box-types", response_model=BoxTypeLite, status_code=status.HTTP_201_CREATED,
+    summary="Crear tipo de caja",
+    dependencies=[Depends(require_permission("master:box_type:manage"))],
+)
+async def create_box_type(payload: BoxTypeCreate, db: DBDep, current_user: CurrentUserDep) -> BoxTypeLite:
+    if await _exists(db, BoxType, current_user.tenant_id, "code", payload.code):
+        raise HTTPException(status_code=409, detail=f"Ya existe un tipo de caja con código '{payload.code}'.")
+    box = BoxType(id=uuid.uuid4(), tenant_id=current_user.tenant_id, created_by_id=current_user.id,
+                  **payload.model_dump(exclude_none=True))
+    db.add(box)
+    await db.commit()
+    await db.refresh(box)
+    return box
+
+
+@router.put(
+    "/box-types/{box_type_id}", response_model=BoxTypeLite, summary="Editar tipo de caja",
+    dependencies=[Depends(require_permission("master:box_type:manage"))],
+)
+async def update_box_type(box_type_id: uuid.UUID, payload: BoxTypeUpdate, db: DBDep, current_user: CurrentUserDep) -> BoxTypeLite:
+    box = (await db.execute(select(BoxType).where(
+        and_(BoxType.id == box_type_id, BoxType.tenant_id == current_user.tenant_id)))).scalar_one_or_none()
+    if not box:
+        raise HTTPException(status_code=404, detail="Tipo de caja no encontrado.")
+    for k, v in payload.model_dump(exclude_unset=True).items():
+        setattr(box, k, v)
+    box.updated_by_id = current_user.id
+    await db.commit()
+    await db.refresh(box)
+    return box
 
 
 # ── Ubicaciones: alta / edición ───────────────────────────────────────────────

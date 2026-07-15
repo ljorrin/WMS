@@ -12,8 +12,15 @@ export interface User {
   roles: string[]
   permissions: string[]
   is_active: boolean
+  is_superadmin?: boolean
   avatar_url?: string
   mfa_enabled?: boolean
+}
+
+export interface Company {
+  id: string
+  name: string
+  legal_name?: string | null
 }
 
 export interface TokenResponse {
@@ -142,6 +149,8 @@ export interface PurchaseOrder {
 export interface POLine {
   id: string
   product_id: string
+  product_sku?: string
+  product_name?: string
   quantity_ordered: number
   quantity_received: number
   quantity_pending: number
@@ -188,9 +197,12 @@ export interface GoodsReceipt {
 export interface GRNLine {
   id: string
   product_id: string
+  product_sku?: string
+  product_name?: string
   quantity_received: number
   quantity_rejected: number
   location_id: string
+  location_code?: string
   batch_number?: string
   expiry_date?: string
 }
@@ -198,6 +210,7 @@ export interface GRNLine {
 export interface PutawayTask {
   id: string
   product_id: string
+  product_sku?: string
   product_name?: string
   quantity: number
   from_location_id: string
@@ -231,6 +244,28 @@ export interface Supplier {
   lead_time_days?: number | null
 }
 
+export interface Customer {
+  id: string
+  code: string
+  name: string
+  customer_type: string
+  is_active: boolean
+  contact_email?: string | null
+  delivery_city?: string | null
+}
+
+export interface BoxType {
+  id: string
+  code: string
+  name: string
+  description?: string | null
+  is_active: boolean
+  length_cm?: number | null
+  width_cm?: number | null
+  height_cm?: number | null
+  max_weight_kg?: number | null
+}
+
 export interface LocationLite {
   id: string
   code: string
@@ -248,6 +283,7 @@ export interface SalesOrder {
   id: string
   so_number: string
   customer_id: string
+  customer_name?: string
   warehouse_id: string
   status: SOStatus
   priority: number
@@ -406,6 +442,7 @@ export interface Warehouse {
   country: string
   has_cold_storage: boolean
   picking_strategy: string
+  default_picking_method: string
 }
 
 // ── Movements (lista paginada del backend) ────────────

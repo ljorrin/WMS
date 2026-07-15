@@ -450,6 +450,77 @@ async def complete_pack_task(
         raise HTTPException(status_code=409, detail=str(e))
 
 
+@router.get(
+    "/packing/{task_id}/packing-list",
+    summary="Lista de empaque (PDF) desde la estación de empaque",
+    dependencies=[Depends(require_permission("outbound:packing:manage"))],
+)
+async def pack_task_packing_list(task_id: UUID, db: DBDep, current_user: CurrentUserDep):
+    """Genera la Lista de Empaque en PDF desde el empaque (sin envío asociado aún)."""
+    from app.services.document_service import build_packing_list_pdf
+
+    svc = _svc(db, current_user)
+    task = await svc.pack_repo.get_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarea de empaque no encontrada.")
+    if task.status != PackStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="El empaque debe estar completado para generar el packing list.")
+        
+    so = await svc.so_repo.get_by_id(task.so_id)
+
+    class DummyShipment:
+        shipment_number = "Pendiente de Despacho"
+        carrier_name = "Por definir"
+        tracking_number = "—"
+        total_boxes = task.box_count
+        total_weight_kg = task.total_weight_kg
+
+    pdf = build_packing_list_pdf(DummyShipment(), so)
+    filename = f"packing-list-{task.pack_task_number}.pdf"
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={filename}"},
+    )
+
+
+@router.get(
+    "/packing/{task_id}/label",
+    summary="Etiqueta de bulto SSCC (PDF)",
+    dependencies=[Depends(require_permission("outbound:packing:manage"))],
+)
+async def pack_task_label(task_id: UUID, db: DBDep, current_user: CurrentUserDep):
+    """Genera la etiqueta de bulto (SSCC) en PDF y marca label_printed=true."""
+    from app.services.document_service import build_sscc_label_pdf
+
+    svc = _svc(db, current_user)
+    task = await svc.pack_repo.get_by_id(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarea de empaque no encontrada.")
+    if task.status != PackStatus.COMPLETED:
+        raise HTTPException(status_code=400, detail="El empaque debe estar completado para generar la etiqueta.")
+
+    so = await svc.so_repo.get_by_id(task.so_id)
+
+    company_name = None
+    if so is not None:
+        from app.models.core import Warehouse, Company
+        wh = await db.get(Warehouse, so.warehouse_id)
+        if wh is not None:
+            company = await db.get(Company, wh.company_id)
+            company_name = company.name if company is not None else None
+
+    pdf = build_sscc_label_pdf(task, so, company_name=company_name)
+
+    await svc.pack_repo.mark_label_printed(task_id)
+    await db.commit()
+
+    filename = f"label-{task.pack_task_number}.pdf"
+    return Response(
+        content=pdf, media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename={filename}"},
+    )
+
+
 # ══════════════════════════════════════════════════════════════════════════════
 # SHIPMENTS
 # ══════════════════════════════════════════════════════════════════════════════

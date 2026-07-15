@@ -1,0 +1,23 @@
+MEJORAS WMS — Módulo Labor Management (FR-090…093)
+===================================================
+10 archivos para el backend (wms-backend). La estructura de carpetas aquí
+espeja la ruta destino dentro de wms-backend/. Ya fueron copiados también
+al repositorio; esta carpeta es una copia agrupada.
+
+NUEVOS (6):
+  app/models/labor.py
+  app/schemas/labor.py
+  app/services/labor_service.py
+  app/api/v1/endpoints/labor.py
+  alembic/versions/labor001_labor_management.py
+  tests/unit/test_labor_service.py
+
+EDITADOS (4) — reemplazan a los existentes:
+  app/core/exceptions.py        (+ excepciones de labor)
+  app/models/__init__.py        (+ registro de LaborStandard/LaborTask)
+  app/api/v1/router.py          (+ router /labor)
+  seeds/run_all.py              (+ 4 permisos labor:* y asignación a roles)
+
+Verificado en sandbox: py_compile OK, import + configure_mappers OK,
+16 tests unitarios PASSED, smoke async de complete_task OK.
+Pendiente: alembic upgrade head contra PostgreSQL real + UI React.

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Send, DollarSign } from 'lucide-react'
+import { Plus, Check, Send, DollarSign } from 'lucide-react'
 import { inboundApi, masterApi, warehouseApi } from '@/api/endpoints'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -11,7 +11,7 @@ import { Combobox } from '@/components/ui/Combobox'
 import { Table, Thead, Tbody, Tr, Th, Td, EmptyRow } from '@/components/ui/Table'
 import { Pagination } from '@/components/ui/Pagination'
 import { fmt } from '@/utils/format'
-import type { Supplier } from '@/types'
+import type { Supplier, ReturnToVendor } from '@/types'
 import toast from 'react-hot-toast'
 
 const PAGE_SIZE = 20
@@ -39,6 +39,11 @@ export function RTVListPage() {
   const [reason, setReason] = useState('')
   const [creditExpected, setCreditExpected] = useState('')
 
+  // Credit form state
+  const [creditTarget, setCreditTarget] = useState<ReturnToVendor | null>(null)
+  const [creditMemoNumber, setCreditMemoNumber] = useState('')
+  const [creditReceived, setCreditReceived] = useState('')
+
   const resetForm = () => {
     setWarehouseId(''); setSupplierId(''); setSupplierLabel(''); setReason(''); setCreditExpected('')
   }
@@ -57,14 +62,28 @@ export function RTVListPage() {
     },
   })
 
+  const approveMut = useMutation({
+    mutationFn: (id: string) => inboundApi.approveRTV(id),
+    onSuccess: () => { toast.success('RTV aprobada'); qc.invalidateQueries({ queryKey: ['rtvs'] }) },
+  })
+
   const shipMut = useMutation({
     mutationFn: (id: string) => inboundApi.shipRTV(id, {}),
     onSuccess: () => { toast.success('RTV despachada'); qc.invalidateQueries({ queryKey: ['rtvs'] }) },
   })
 
   const creditMut = useMutation({
-    mutationFn: (id: string) => inboundApi.creditRTV(id, {}),
-    onSuccess: () => { toast.success('Crédito registrado'); qc.invalidateQueries({ queryKey: ['rtvs'] }) },
+    mutationFn: () => inboundApi.creditRTV(creditTarget!.id, {
+      credit_memo_number: creditMemoNumber,
+      credit_received: Number(creditReceived)
+    }),
+    onSuccess: () => { 
+      toast.success('Crédito registrado')
+      setCreditTarget(null)
+      setCreditMemoNumber('')
+      setCreditReceived('')
+      qc.invalidateQueries({ queryKey: ['rtvs'] }) 
+    },
   })
 
   const formValid = warehouseId && supplierId && reason.length > 0
@@ -118,6 +137,12 @@ export function RTVListPage() {
                   <Td className="text-xs text-gray-400">{fmt.date(rtv.created_at)}</Td>
                   <Td>
                     <div className="flex gap-2">
+                      {rtv.status === 'pending' && (
+                        <button onClick={() => approveMut.mutate(rtv.id)} title="Aprobar"
+                          className="text-emerald-600 hover:text-emerald-800 transition-colors">
+                          <Check className="h-4 w-4" />
+                        </button>
+                      )}
                       {rtv.status === 'approved' && (
                         <button onClick={() => shipMut.mutate(rtv.id)} title="Despachar"
                           className="text-blue-600 hover:text-blue-800 transition-colors">
@@ -125,7 +150,7 @@ export function RTVListPage() {
                         </button>
                       )}
                       {rtv.status === 'shipped' && (
-                        <button onClick={() => creditMut.mutate(rtv.id)} title="Registrar crédito"
+                        <button onClick={() => setCreditTarget(rtv)} title="Registrar crédito"
                           className="text-green-600 hover:text-green-800 transition-colors">
                           <DollarSign className="h-4 w-4" />
                         </button>
@@ -180,6 +205,30 @@ export function RTVListPage() {
             placeholder="Motivo de la devolución" />
           <Input label="Crédito esperado (USD)" type="number" value={creditExpected}
             onChange={e => setCreditExpected(e.target.value)} placeholder="0.00" />
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!creditTarget}
+        onClose={() => setCreditTarget(null)}
+        title="Registrar nota de crédito"
+        description={`Confirma el crédito recibido para la RTV ${creditTarget?.rtv_number ?? ''}.`}
+        size="sm"
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => setCreditTarget(null)}>Cancelar</Button>
+            <Button size="sm" 
+              disabled={!creditMemoNumber || !creditReceived} 
+              loading={creditMut.isPending}
+              onClick={() => creditMut.mutate()}>Confirmar crédito</Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Input label="Número de Nota de Crédito" value={creditMemoNumber}
+            onChange={e => setCreditMemoNumber(e.target.value)} placeholder="Ej: NC-2023-001" />
+          <Input label="Monto recibido (USD)" type="number" value={creditReceived}
+            onChange={e => setCreditReceived(e.target.value)} placeholder="0.00" />
         </div>
       </Modal>
     </div>

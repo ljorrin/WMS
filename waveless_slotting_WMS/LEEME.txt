@@ -1,0 +1,38 @@
+WAVELESS (Order Streaming) + SLOTTING REFINADO — WMS
+=====================================================
+12 archivos para wms-backend. La estructura espeja la ruta destino.
+Ya fueron copiados al repositorio; esta carpeta es una copia agrupada.
+
+A) ORDER STREAMING / WAVELESS (FR-055) — NUEVOS (4). Sin tabla ni migración
+   (reutiliza PickingTask con wave_id=NULL y permisos/excepciones de outbound):
+     app/services/streaming_service.py
+     app/schemas/streaming.py
+     app/api/v1/endpoints/streaming.py      -> /api/v1/streaming
+     tests/unit/test_streaming_service.py   (8 tests)
+
+B) SLOTTING REFINADO — EDITADOS (3). Sin migración (columnas ya existían):
+   ahora recomienda UBICACIÓN específica (pick_sequence + capacidad) y estima
+   el ahorro de recorrido (score_delta):
+     app/services/slotting_service.py
+     app/schemas/slotting.py                (+estimated_travel_savings)
+     tests/unit/test_slotting_service.py    (22 tests)
+
+C) SCRIPT IDEMPOTENTE DE CABLEADO — NUEVO (1):
+     scripts/apply_mejoras_wiring.py
+   Aplica el cableado de labor+slotting+streaming SOLO donde falte.
+   Uso:  python scripts/apply_mejoras_wiring.py   (en wms-backend)
+   Luego: git add -A && git commit -m "wire labor+slotting+streaming"
+
+D) COMPARTIDOS RE-CABLEADOS (4) — reemplazan a los existentes; contienen el
+   cableado de LABOR + SLOTTING + STREAMING juntos:
+     app/core/exceptions.py
+     app/models/__init__.py
+     app/api/v1/router.py       (monta /labor, /slotting, /streaming)
+     seeds/run_all.py           (permisos labor:* y slotting:* + roles)
+
+Verificado en sandbox: compila, servicios importan, 30 tests unitarios PASSED,
+wiring idempotente (2ª corrida = no-op).
+Pendiente: alembic upgrade head vs PostgreSQL real + UI React.
+
+IMPORTANTE: haz commit en git para que el cableado no se revierta. Si se
+revierte, re-ejecuta scripts/apply_mejoras_wiring.py y vuelve a commitear.

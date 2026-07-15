@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import and_, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 
 from app.models.inbound import (
     ASN,
@@ -121,7 +121,7 @@ class PurchaseOrderRepository:
             select(PurchaseOrder, Supplier.name.label("supplier_name"))
             .join(Supplier, PurchaseOrder.supplier_id == Supplier.id)
             .options(
-                selectinload(PurchaseOrder.lines),
+                selectinload(PurchaseOrder.lines).joinedload(PurchaseOrderLine.product),
                 selectinload(PurchaseOrder.status_history),
             )
             .where(
@@ -142,6 +142,10 @@ class PurchaseOrderRepository:
             
         po = row.PurchaseOrder
         po.supplier_name = row.supplier_name
+        for line in po.lines:
+            if line.product:
+                line.product_sku = line.product.sku
+                line.product_name = line.product.name
         return po
 
     async def list(
@@ -190,7 +194,7 @@ class PurchaseOrderRepository:
             )
             .join(Supplier, PurchaseOrder.supplier_id == Supplier.id)
             .options(
-                selectinload(PurchaseOrder.lines),
+                selectinload(PurchaseOrder.lines).joinedload(PurchaseOrderLine.product),
                 selectinload(PurchaseOrder.status_history),
             )
             .where(and_(*filters))
@@ -204,6 +208,10 @@ class PurchaseOrderRepository:
         for row in rows:
             po = row.PurchaseOrder
             po.supplier_name = row.supplier_name
+            for line in po.lines:
+                if line.product:
+                    line.product_sku = line.product.sku
+                    line.product_name = line.product.name
             items.append(po)
             
         return items, total
@@ -481,7 +489,10 @@ class GRNRepository:
     async def get_by_id(self, grn_id: UUID) -> Optional[GoodsReceipt]:
         result = await self.db.execute(
             select(GoodsReceipt)
-            .options(selectinload(GoodsReceipt.lines))
+            .options(
+                selectinload(GoodsReceipt.lines).joinedload(GoodsReceiptLine.product),
+                selectinload(GoodsReceipt.lines).joinedload(GoodsReceiptLine.location)
+            )
             .where(
                 and_(
                     GoodsReceipt.id == grn_id,
@@ -489,7 +500,15 @@ class GRNRepository:
                 )
             )
         )
-        return result.scalar_one_or_none()
+        row = result.scalar_one_or_none()
+        if row:
+            for line in row.lines:
+                if line.product:
+                    line.product_sku = line.product.sku
+                    line.product_name = line.product.name
+                if line.location:
+                    line.location_code = line.location.code
+        return row
 
     async def list(
         self,
@@ -522,13 +541,24 @@ class GRNRepository:
         rows = (
             await self.db.execute(
                 select(GoodsReceipt)
-                .options(selectinload(GoodsReceipt.lines))
+                .options(
+                    selectinload(GoodsReceipt.lines).joinedload(GoodsReceiptLine.product),
+                    selectinload(GoodsReceipt.lines).joinedload(GoodsReceiptLine.location)
+                )
                 .where(and_(*filters))
                 .order_by(GoodsReceipt.received_at.desc())
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             )
         ).scalars().all()
+
+        for row in rows:
+            for line in row.lines:
+                if line.product:
+                    line.product_sku = line.product.sku
+                    line.product_name = line.product.name
+                if line.location:
+                    line.location_code = line.location.code
 
         return list(rows), total
 
@@ -805,6 +835,7 @@ class PutawayTaskRepository:
                 select(
                     PutawayTask,
                     Product.name.label("product_name"),
+                    Product.sku.label("product_sku"),
                     LocFrom.code.label("from_location_code"),
                     LocSug.code.label("suggested_location_code"),
                     LocAct.code.label("actual_location_code"),
@@ -824,6 +855,7 @@ class PutawayTaskRepository:
         for row in result:
             task = row.PutawayTask
             task.product_name = row.product_name
+            task.product_sku = row.product_sku
             task.from_location_code = row.from_location_code
             task.suggested_location_code = row.suggested_location_code
             task.actual_location_code = row.actual_location_code
@@ -938,15 +970,24 @@ class RTVRepository:
         return rtv
 
     async def get_by_id(self, rtv_id: UUID) -> Optional[ReturnToVendor]:
+        from app.models.master_data import Supplier
         result = await self.db.execute(
-            select(ReturnToVendor).where(
+            select(ReturnToVendor, Supplier.name.label("supplier_name"))
+            .outerjoin(Supplier, ReturnToVendor.supplier_id == Supplier.id)
+            .where(
                 and_(
                     ReturnToVendor.id == rtv_id,
                     ReturnToVendor.tenant_id == self.tenant_id,
                 )
             )
+            .execution_options(populate_existing=True)
         )
-        return result.scalar_one_or_none()
+        row = result.first()
+        if not row:
+            return None
+        rtv = row.ReturnToVendor
+        rtv.supplier_name = row.supplier_name
+        return rtv
 
     async def list(
         self,
@@ -966,16 +1007,25 @@ class RTVRepository:
                 select(func.count(ReturnToVendor.id)).where(and_(*filters))
             )
         ).scalar_one()
+        from app.models.master_data import Supplier
         rows = (
             await self.db.execute(
-                select(ReturnToVendor)
+                select(ReturnToVendor, Supplier.name.label("supplier_name"))
+                .outerjoin(Supplier, ReturnToVendor.supplier_id == Supplier.id)
                 .where(and_(*filters))
                 .order_by(ReturnToVendor.created_at.desc())
                 .offset((page - 1) * page_size)
                 .limit(page_size)
             )
-        ).scalars().all()
-        return list(rows), total
+        ).all()
+        
+        items = []
+        for row in rows:
+            rtv = row.ReturnToVendor
+            rtv.supplier_name = row.supplier_name
+            items.append(rtv)
+            
+        return items, total
 
     async def update_status(
         self,

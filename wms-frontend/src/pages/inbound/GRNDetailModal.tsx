@@ -54,12 +54,14 @@ export function GRNDetailModal({ grnId, onClose }: { grnId: string | null; onClo
               ) : (
                 grn.lines.map(l => (
                   <Tr key={l.id}>
-                    <Td><span className="font-mono text-xs">{l.product_id}</span></Td>
+                    <Td>
+                      <span className="font-mono text-xs" title={l.product_name}>{l.product_sku ?? l.product_id}</span>
+                    </Td>
                     <Td className="text-green-700">{fmt.number(l.quantity_received)}</Td>
                     <Td className={l.quantity_rejected > 0 ? 'text-red-600' : 'text-gray-400'}>
                       {fmt.number(l.quantity_rejected)}
                     </Td>
-                    <Td><span className="font-mono text-xs">{l.location_id}</span></Td>
+                    <Td><span className="font-mono text-xs">{l.location_code ?? l.location_id}</span></Td>
                     <Td className="text-xs">{l.batch_number ?? '—'}</Td>
                     <Td className="text-xs">{l.expiry_date ? fmt.date(l.expiry_date) : '—'}</Td>
                   </Tr>

@@ -22,17 +22,20 @@ const DISPOSITIONS = [
   { value: 'reject', label: 'Rechazar', approved: false },
 ]
 
+const STATUS_FILTERS = ['', 'pending', 'in_progress', 'completed', 'cancelled']
+
 export function QualityPage() {
   const [page, setPage] = useState(1)
   const [target, setTarget] = useState<QualityInspection | null>(null)
   const [disposition, setDisposition] = useState('accept')
   const [notes, setNotes] = useState('')
   const [returnToVendor, setReturnToVendor] = useState(false)
+  const [status, setStatus] = useState('')
   const qc = useQueryClient()
 
   const { data, isLoading } = useQuery({
-    queryKey: ['qc', page],
-    queryFn: () => inboundApi.getQCInspections({ page, page_size: PAGE_SIZE }),
+    queryKey: ['qc', page, status],
+    queryFn: () => inboundApi.getQCInspections({ page, page_size: PAGE_SIZE, ...(status ? { status } : {}) }),
     placeholderData: prev => prev,
   })
 
@@ -55,11 +58,17 @@ export function QualityPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900">Control de Calidad</h1>
           <p className="text-sm text-gray-500">{data?.total ?? 0} inspecciones</p>
         </div>
+        <select value={status} onChange={e => { setStatus(e.target.value); setPage(1) }}
+          className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-700 capitalize">
+          {STATUS_FILTERS.map(s => (
+            <option key={s} value={s}>{s ? s.replace(/_/g, ' ') : 'Todos los estados'}</option>
+          ))}
+        </select>
       </div>
 
       <Card padding={false}>

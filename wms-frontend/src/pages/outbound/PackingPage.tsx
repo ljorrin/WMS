@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { PlayCircle, Package, Printer, FileDown } from 'lucide-react'
-import { outboundApi } from '@/api/endpoints'
+import { outboundApi, masterApi } from '@/api/endpoints'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -15,13 +15,12 @@ import toast from 'react-hot-toast'
 
 const PAGE_SIZE = 20
 const STATUS_FILTERS = ['', 'pending', 'in_progress', 'completed', 'cancelled']
-const BOX_TYPES = ['carton_s', 'carton_m', 'carton_l', 'pallet', 'envelope', 'custom']
 
 export function PackingPage() {
   const [page, setPage] = useState(1)
   const [status, setStatus] = useState('')
   const [target, setTarget] = useState<PackTask | null>(null)
-  const [boxType, setBoxType] = useState('carton_m')
+  const [boxType, setBoxType] = useState('')
   const [boxCount, setBoxCount] = useState('1')
   const [weight, setWeight] = useState('')
   const [volume, setVolume] = useState('')
@@ -34,6 +33,11 @@ export function PackingPage() {
       page, page_size: PAGE_SIZE, ...(status ? { status } : {}),
     }),
     placeholderData: prev => prev,
+  })
+
+  const { data: boxTypes } = useQuery({
+    queryKey: ['box-types', 'packing'],
+    queryFn: () => masterApi.getBoxTypes({ page_size: 100, is_active: true }),
   })
 
   const startMut = useMutation({
@@ -54,14 +58,14 @@ export function PackingPage() {
     }),
     onSuccess: () => {
       toast.success('Empaque completado — listo para envío')
-      setTarget(null); setBoxType('carton_m'); setBoxCount('1'); setWeight(''); setVolume(''); setSscc('')
+      setTarget(null); setBoxType(''); setBoxCount('1'); setWeight(''); setVolume(''); setSscc('')
       qc.invalidateQueries({ queryKey: ['packing'] })
     },
   })
 
   const openComplete = (t: PackTask) => {
     setTarget(t)
-    setBoxType(t.box_type ?? 'carton_m')
+    setBoxType(t.box_type ?? '')
     setBoxCount(String(t.box_count || 1))
     setWeight(t.total_weight_kg != null ? String(t.total_weight_kg) : '')
     setVolume(t.total_volume_m3 != null ? String(t.total_volume_m3) : '')
@@ -73,13 +77,9 @@ export function PackingPage() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
 
   const downloadPackingList = async (t: PackTask) => {
-    if (!t.shipment_id) {
-      toast.error('Este empaque no tiene un envío asociado aún')
-      return
-    }
     setDownloadingId(t.id)
     try {
-      const blob = await outboundApi.getPackingListPdf(t.shipment_id)
+      const blob = await outboundApi.getPackTaskPackingListPdf(t.id)
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
@@ -92,6 +92,28 @@ export function PackingPage() {
       toast.error('No se pudo descargar el PDF')
     } finally {
       setDownloadingId(null)
+    }
+  }
+
+  const [printingId, setPrintingId] = useState<string | null>(null)
+
+  const downloadLabel = async (t: PackTask) => {
+    setPrintingId(t.id)
+    try {
+      const blob = await outboundApi.getPackTaskLabelPdf(t.id)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `label-${t.pack_task_number}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      qc.invalidateQueries({ queryKey: ['packing'] })
+    } catch {
+      toast.error('No se pudo generar la etiqueta')
+    } finally {
+      setPrintingId(null)
     }
   }
 
@@ -153,8 +175,20 @@ export function PackingPage() {
                   <Td className="text-xs font-mono text-gray-500">{t.sscc ?? '—'}</Td>
                   <Td>
                     <div className="flex gap-1">
-                      <Printer className={t.label_printed ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-gray-300'} />
-                      <Package className={t.packing_list_printed ? 'h-4 w-4 text-green-600' : 'h-4 w-4 text-gray-300'} />
+                      <button
+                        onClick={() => t.status === 'completed' ? downloadLabel(t) : toast.error('El empaque debe estar completado para generar la etiqueta')}
+                        title="Generar etiqueta SSCC (PDF)"
+                        disabled={printingId === t.id || t.status !== 'completed'}
+                      >
+                        <Printer className={t.label_printed ? 'h-4 w-4 text-green-600 hover:text-green-800' : 'h-4 w-4 text-gray-400 hover:text-gray-600'} />
+                      </button>
+                      <button 
+                        onClick={() => t.status === 'completed' ? downloadPackingList(t) : toast.error('El empaque debe estar completado para descargar el Packing List')}
+                        title="Descargar Packing List PDF"
+                        disabled={downloadingId === t.id || t.status !== 'completed'}
+                      >
+                        <Package className={t.packing_list_printed ? 'h-4 w-4 text-green-600 hover:text-green-800' : 'h-4 w-4 text-gray-400 hover:text-gray-600'} />
+                      </button>
                     </div>
                   </Td>
                   <Td>
@@ -170,7 +204,7 @@ export function PackingPage() {
                           Completar
                         </Button>
                       )}
-                      {t.status === 'completed' && t.shipment_id && (
+                      {t.status === 'completed' && (
                         <button
                           onClick={() => downloadPackingList(t)}
                           title="Descargar packing list PDF"
@@ -208,8 +242,9 @@ export function PackingPage() {
             <div className="flex flex-col gap-1">
               <label className="text-sm font-medium text-gray-700">Tipo de caja</label>
               <select value={boxType} onChange={e => setBoxType(e.target.value)}
-                className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm capitalize">
-                {BOX_TYPES.map(b => <option key={b} value={b}>{b.replace(/_/g, ' ')}</option>)}
+                className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm">
+                <option value="">Seleccionar…</option>
+                {boxTypes?.items.map(b => <option key={b.id} value={b.code}>{b.name}</option>)}
               </select>
             </div>
             <Input label="Número de cajas" type="number" value={boxCount}

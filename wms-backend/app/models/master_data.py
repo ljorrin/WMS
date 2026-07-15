@@ -795,3 +795,31 @@ class Carrier(WMSTenantBase):
 
     def __repr__(self) -> str:
         return f"<Carrier {self.code} - {self.name}>"
+
+
+# ─── BOX TYPE ─────────────────────────────────────────────────────────────────
+
+class BoxType(WMSTenantBase):
+    """
+    BoxType = Tipo de caja/empaque usado en Packing (carton, pallet, sobre, etc.).
+    Catalogo reutilizable entre pedidos, independiente del empaque GS1 por producto
+    (ver ProductPackaging).
+    """
+    __tablename__ = "box_types"
+
+    code: Mapped[str] = mapped_column(String(30), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    description: Mapped[Optional[str]] = mapped_column(Text)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+    length_cm: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
+    width_cm: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
+    height_cm: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
+    max_weight_kg: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2))
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", name="uq_box_types_tenant_code"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<BoxType {self.code} - {self.name}>"

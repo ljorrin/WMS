@@ -30,7 +30,7 @@ export function PODetailModal({ poId, onClose }: { poId: string | null; onClose:
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Field label="Estado"><Badge status={po.status} /></Field>
-            <Field label="Proveedor"><span className="font-mono text-xs">{po.supplier_id}</span></Field>
+            <Field label="Proveedor"><span className="font-medium text-gray-700">{po.supplier_name ?? po.supplier_id}</span></Field>
             <Field label="Fecha orden">{fmt.date(po.order_date)}</Field>
             <Field label="Entrega esperada">{po.expected_delivery_date ? fmt.date(po.expected_delivery_date) : '—'}</Field>
           </div>

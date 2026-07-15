@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select, func
 
 from app.core.dependencies import DBDep, CurrentUserDep, SuperAdminDep, PaginationDep
-from app.models.core import Warehouse, WarehouseStatus, WarehouseType
+from app.models.core import Warehouse, WarehouseStatus, WarehouseType, Company
 
 router = APIRouter()
 
@@ -30,9 +30,33 @@ class WarehouseCreate(BaseModel):
     country: str = "PA"
     total_area_m2: Optional[float] = None
     picking_strategy: str = "FEFO"
+    default_picking_method: str = "discrete"
     has_cold_storage: bool = False
     has_hazmat_zone: bool = False
     has_dock_management: bool = False
+    model_config = {"from_attributes": True}
+
+
+class WarehouseUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=2, max_length=200)
+    type: Optional[WarehouseType] = None
+    status: Optional[WarehouseStatus] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    province: Optional[str] = None
+    total_area_m2: Optional[float] = None
+    picking_strategy: Optional[str] = None
+    default_picking_method: Optional[str] = None
+    has_cold_storage: Optional[bool] = None
+    has_hazmat_zone: Optional[bool] = None
+    has_dock_management: Optional[bool] = None
+    model_config = {"extra": "ignore"}
+
+
+class CompanyLite(BaseModel):
+    id: uuid.UUID
+    name: str
+    legal_name: Optional[str] = None
     model_config = {"from_attributes": True}
 
 
@@ -48,6 +72,7 @@ class WarehouseResponse(BaseModel):
     country: str
     total_area_m2: Optional[float]
     picking_strategy: str
+    default_picking_method: str
     has_cold_storage: bool
     has_hazmat_zone: bool
     has_dock_management: bool
@@ -92,6 +117,17 @@ async def list_warehouses(
     items = (await db.execute(stmt)).scalars().all()
 
     return WarehouseListResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
+
+
+@router.get("/companies", response_model=list[CompanyLite])
+async def list_companies(
+    db: DBDep,
+    current_user: CurrentUserDep,
+) -> list[CompanyLite]:
+    """Empresas del tenant actual (para el selector de empresa al crear una bodega)."""
+    stmt = select(Company).where(Company.tenant_id == current_user.tenant_id).order_by(Company.name)
+    items = (await db.execute(stmt)).scalars().all()
+    return items
 
 
 @router.post("", response_model=WarehouseResponse, status_code=status.HTTP_201_CREATED)
@@ -148,4 +184,23 @@ async def get_warehouse(
     wh = await db.get(Warehouse, warehouse_id)
     if not wh or wh.tenant_id != current_user.tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada.")
+    return wh
+
+
+@router.put("/{warehouse_id}", response_model=WarehouseResponse)
+async def update_warehouse(
+    warehouse_id: uuid.UUID,
+    body: WarehouseUpdate,
+    db: DBDep,
+    superadmin: SuperAdminDep,
+) -> WarehouseResponse:
+    """Edita una bodega existente del tenant."""
+    wh = await db.get(Warehouse, warehouse_id)
+    if not wh or wh.tenant_id != superadmin.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Bodega no encontrada.")
+
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(wh, k, v)
+    await db.commit()
+    await db.refresh(wh)
     return wh

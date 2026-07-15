@@ -96,6 +96,8 @@ export default function App() {
             <Route path="master">
               <Route path="products" element={<MasterDataPage />} />
               <Route path="suppliers" element={<MasterDataPage />} />
+              <Route path="customers" element={<MasterDataPage />} />
+              <Route path="box-types" element={<MasterDataPage />} />
               <Route path="locations" element={<MasterDataPage />} />
             </Route>
 

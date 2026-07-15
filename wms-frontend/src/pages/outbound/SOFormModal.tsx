@@ -6,7 +6,7 @@ import { Modal } from '@/components/ui/Modal'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Combobox } from '@/components/ui/Combobox'
-import type { Product } from '@/types'
+import type { Product, Customer } from '@/types'
 import toast from 'react-hot-toast'
 
 interface SOLineDraft {
@@ -37,6 +37,7 @@ export function SOFormModal({ open, onClose }: Props) {
   const qc = useQueryClient()
 
   const [customerId, setCustomerId] = useState('')
+  const [customerLabel, setCustomerLabel] = useState('')
   const [warehouseId, setWarehouseId] = useState('')
   const [warehouseLabel, setWarehouseLabel] = useState('')
   const [priority, setPriority] = useState('5')
@@ -53,7 +54,7 @@ export function SOFormModal({ open, onClose }: Props) {
   })
 
   const reset = () => {
-    setCustomerId(''); setWarehouseId(''); setWarehouseLabel('')
+    setCustomerId(''); setCustomerLabel(''); setWarehouseId(''); setWarehouseLabel('')
     setPriority('5'); setCurrency('USD'); setDeliveryDate('')
     setIncoterms(''); setNotes(''); setLines([emptyLine()])
   }
@@ -65,7 +66,7 @@ export function SOFormModal({ open, onClose }: Props) {
     l => l.product_id && Number(l.quantity_ordered) > 0 && Number(l.unit_price) >= 0
   )
 
-  const canSubmit = customerId.length >= 3 && warehouseId &&
+  const canSubmit = !!customerId && warehouseId &&
     validLines.length > 0
 
   const createMut = useMutation({
@@ -110,12 +111,19 @@ export function SOFormModal({ open, onClose }: Props) {
     >
       <div className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input
-            label="Customer ID"
-            value={customerId}
-            onChange={e => setCustomerId(e.target.value)}
-            placeholder="UUID o código del cliente"
-          />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">Cliente</label>
+            <Combobox<Customer>
+              placeholder="Buscar cliente…"
+              value={customerId}
+              displayLabel={customerLabel}
+              queryKey="customers-so"
+              fetcher={s => masterApi.getCustomers({ search: s, page_size: 20, is_active: true })}
+              getKey={c => c.id}
+              getLabel={c => `${c.code} — ${c.name}`}
+              onSelect={c => { setCustomerId(c.id); setCustomerLabel(`${c.code} — ${c.name}`) }}
+            />
+          </div>
           <div className="flex flex-col gap-1">
             <label className="text-sm font-medium text-gray-700">Bodega</label>
             <select

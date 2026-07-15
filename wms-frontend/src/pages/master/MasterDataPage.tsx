@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useLocation, useNavigate } from 'react-router-dom'
-import { Plus, Pencil, Package, Users, MapPin, X } from 'lucide-react'
+import { Plus, Pencil, Package, Users, UserCheck, MapPin, Box, X } from 'lucide-react'
 import { masterApi, warehouseApi } from '@/api/endpoints'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
@@ -11,11 +11,11 @@ import { Modal } from '@/components/ui/Modal'
 import { Table, Thead, Tbody, Tr, Th, Td, EmptyRow } from '@/components/ui/Table'
 import { Pagination } from '@/components/ui/Pagination'
 import { fmt } from '@/utils/format'
-import type { Product, Supplier, LocationLite } from '@/types'
+import type { Product, Supplier, Customer, BoxType, LocationLite } from '@/types'
 import toast from 'react-hot-toast'
 
 // ─── Tipos locales ────────────────────────────────────────
-type Tab = 'productos' | 'proveedores' | 'ubicaciones'
+type Tab = 'productos' | 'proveedores' | 'clientes' | 'tipos-caja' | 'ubicaciones'
 
 const PAGE_SIZE = 25
 
@@ -25,6 +25,7 @@ const STORAGE_CONDITIONS = ['ambient', 'controlled', 'refrigerated', 'frozen', '
 const ROTATION_STRATEGIES = ['FEFO', 'FIFO', 'LIFO', 'LEFO']
 const LOCATION_TYPES = ['standard', 'bulk', 'floor', 'mezzanine', 'cold_room', 'hazmat', 'quarantine', 'receiving', 'shipping', 'staging', 'cross_dock', 'damaged', 'returns']
 const SUPPLIER_TYPES = ['manufacturer', 'distributor', 'broker', 'importer']
+const CUSTOMER_TYPES = ['retail', 'wholesale', 'distributor', 'ecommerce', 'government', 'internal']
 
 // ─── Productos ────────────────────────────────────────────
 function ProductsTab() {
@@ -425,6 +426,364 @@ function SuppliersTab() {
   )
 }
 
+// ─── Clientes ─────────────────────────────────────────────
+function CustomersTab() {
+  const qc = useQueryClient()
+  const [page, setPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<Customer | null>(null)
+
+  const [code, setCode] = useState('')
+  const [customerName, setCustomerName] = useState('')
+  const [customerType, setCustomerType] = useState('retail')
+  const [contactEmail, setContactEmail] = useState('')
+  const [contactPhone, setContactPhone] = useState('')
+  const [deliveryCity, setDeliveryCity] = useState('')
+  const [country, setCountry] = useState('PA')
+  const [ruc, setRuc] = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['customers', page, search],
+    queryFn: () => masterApi.getCustomers({ page, page_size: PAGE_SIZE, search: search || undefined }),
+    placeholderData: prev => prev,
+  })
+
+  const reset = () => {
+    setCode(''); setCustomerName(''); setCustomerType('retail'); setContactEmail('')
+    setContactPhone(''); setDeliveryCity(''); setCountry('PA'); setRuc('')
+    setEditing(null)
+  }
+
+  const openCreate = () => { reset(); setOpen(true) }
+  const openEdit = (c: Customer) => {
+    setEditing(c)
+    setCode(c.code); setCustomerName(c.name); setCustomerType(c.customer_type)
+    setContactEmail(c.contact_email ?? '')
+    setContactPhone((c as any).contact_phone ?? '')
+    setDeliveryCity(c.delivery_city ?? '')
+    setCountry((c as any).delivery_country ?? 'PA')
+    setRuc((c as any).ruc ?? '')
+    setOpen(true)
+  }
+
+  const saveMut = useMutation({
+    mutationFn: () => {
+      const payload = {
+        code, name: customerName, customer_type: customerType,
+        contact_email: contactEmail || undefined,
+        contact_phone: contactPhone || undefined,
+        delivery_city: deliveryCity || undefined,
+        delivery_country: country || undefined,
+        ruc: ruc || undefined,
+      }
+      return editing
+        ? masterApi.updateCustomer(editing.id, payload)
+        : masterApi.createCustomer(payload)
+    },
+    onSuccess: () => {
+      toast.success(editing ? 'Cliente actualizado' : 'Cliente creado')
+      qc.invalidateQueries({ queryKey: ['customers'] })
+      setOpen(false); reset()
+    },
+    onError: () => toast.error('No se pudo guardar el cliente'),
+  })
+
+  const canSave = code.trim().length > 0 && customerName.trim().length > 0
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">{data?.total ?? 0} clientes</p>
+        <div className="flex gap-2">
+          <div className="flex items-center gap-2 h-9 border border-gray-300 rounded-lg px-3 text-sm">
+            <input
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1) }}
+              placeholder="Buscar por código o nombre…"
+              className="outline-none placeholder:text-gray-400 w-48"
+            />
+            {search && (
+              <button onClick={() => { setSearch(''); setPage(1) }} className="text-gray-400 hover:text-gray-600">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="h-4 w-4" /> Nuevo Cliente
+          </Button>
+        </div>
+      </div>
+
+      <Card padding={false}>
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Código</Th>
+              <Th>Nombre</Th>
+              <Th>Tipo</Th>
+              <Th>Contacto</Th>
+              <Th>Ciudad</Th>
+              <Th>Estado</Th>
+              <Th>Acciones</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {isLoading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <Tr key={i}>{Array.from({ length: 7 }).map((_, j) => (
+                  <Td key={j}><div className="h-4 bg-gray-100 rounded animate-pulse w-20" /></Td>
+                ))}</Tr>
+              ))
+            ) : !data?.items.length ? (
+              <EmptyRow cols={7} message="No hay clientes registrados" />
+            ) : (
+              data.items.map(c => (
+                <Tr key={c.id}>
+                  <Td><span className="font-mono font-medium text-primary-700">{c.code}</span></Td>
+                  <Td className="font-medium text-gray-900">{c.name}</Td>
+                  <Td className="text-xs text-gray-500 capitalize">{c.customer_type}</Td>
+                  <Td className="text-xs text-gray-500">{c.contact_email ?? '—'}</Td>
+                  <Td className="text-xs text-gray-500">{c.delivery_city ?? '—'}</Td>
+                  <Td><Badge status={c.is_active ? 'active' : 'inactive'} /></Td>
+                  <Td>
+                    <button onClick={() => openEdit(c)} title="Editar"
+                      className="text-gray-500 hover:text-primary-700 transition-colors">
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  </Td>
+                </Tr>
+              ))
+            )}
+          </Tbody>
+        </Table>
+        <Pagination page={page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />
+      </Card>
+
+      <Modal
+        open={open}
+        onClose={() => { setOpen(false); reset() }}
+        title={editing ? `Editar cliente ${editing.code}` : 'Nuevo cliente'}
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => { setOpen(false); reset() }}>Cancelar</Button>
+            <Button size="sm" disabled={!canSave} loading={saveMut.isPending}
+              onClick={() => saveMut.mutate()}>
+              {editing ? 'Guardar cambios' : 'Crear cliente'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input label="Código *" value={code} onChange={e => setCode(e.target.value)}
+              placeholder="Código único del cliente" disabled={!!editing} />
+            <Input label="Nombre *" value={customerName} onChange={e => setCustomerName(e.target.value)}
+              placeholder="Nombre o razón social del cliente" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-medium text-gray-700">Tipo de cliente</label>
+              <select value={customerType} onChange={e => setCustomerType(e.target.value)}
+                className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm capitalize">
+                {CUSTOMER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <Input label="RUC / Tax ID" value={ruc} onChange={e => setRuc(e.target.value)}
+              placeholder="Identificación tributaria (opcional)" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input label="Email de contacto" type="email" value={contactEmail}
+              onChange={e => setContactEmail(e.target.value)} placeholder="contacto@cliente.com" />
+            <Input label="Teléfono de contacto" value={contactPhone}
+              onChange={e => setContactPhone(e.target.value)} placeholder="+507 000-0000" />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input label="Ciudad de entrega" value={deliveryCity} onChange={e => setDeliveryCity(e.target.value)}
+              placeholder="Ciudad principal de entrega" />
+            <Input label="País" value={country} onChange={e => setCountry(e.target.value)}
+              placeholder="PA, CO, US…" />
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
+// ─── Tipos de caja ────────────────────────────────────────
+function BoxTypesTab() {
+  const qc = useQueryClient()
+  const [page, setPage] = useState(1)
+  const [search, setSearch] = useState('')
+  const [open, setOpen] = useState(false)
+  const [editing, setEditing] = useState<BoxType | null>(null)
+
+  const [code, setCode] = useState('')
+  const [name, setName] = useState('')
+  const [description, setDescription] = useState('')
+  const [length, setLength] = useState('')
+  const [width, setWidth] = useState('')
+  const [height, setHeight] = useState('')
+  const [maxWeight, setMaxWeight] = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['box-types', page, search],
+    queryFn: () => masterApi.getBoxTypes({ page, page_size: PAGE_SIZE, search: search || undefined }),
+    placeholderData: prev => prev,
+  })
+
+  const reset = () => {
+    setCode(''); setName(''); setDescription('')
+    setLength(''); setWidth(''); setHeight(''); setMaxWeight('')
+    setEditing(null)
+  }
+
+  const openCreate = () => { reset(); setOpen(true) }
+  const openEdit = (b: BoxType) => {
+    setEditing(b)
+    setCode(b.code); setName(b.name); setDescription(b.description ?? '')
+    setLength(b.length_cm != null ? String(b.length_cm) : '')
+    setWidth(b.width_cm != null ? String(b.width_cm) : '')
+    setHeight(b.height_cm != null ? String(b.height_cm) : '')
+    setMaxWeight(b.max_weight_kg != null ? String(b.max_weight_kg) : '')
+    setOpen(true)
+  }
+
+  const saveMut = useMutation({
+    mutationFn: () => {
+      const payload = {
+        code, name, description: description || undefined,
+        length_cm: length ? Number(length) : undefined,
+        width_cm: width ? Number(width) : undefined,
+        height_cm: height ? Number(height) : undefined,
+        max_weight_kg: maxWeight ? Number(maxWeight) : undefined,
+      }
+      return editing
+        ? masterApi.updateBoxType(editing.id, payload)
+        : masterApi.createBoxType(payload)
+    },
+    onSuccess: () => {
+      toast.success(editing ? 'Tipo de caja actualizado' : 'Tipo de caja creado')
+      qc.invalidateQueries({ queryKey: ['box-types'] })
+      setOpen(false); reset()
+    },
+    onError: () => toast.error('No se pudo guardar el tipo de caja'),
+  })
+
+  const canSave = code.trim().length > 0 && name.trim().length > 0
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">{data?.total ?? 0} tipos de caja</p>
+        <div className="flex gap-2">
+          <div className="flex items-center gap-2 h-9 border border-gray-300 rounded-lg px-3 text-sm">
+            <input
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(1) }}
+              placeholder="Buscar por código o nombre…"
+              className="outline-none placeholder:text-gray-400 w-48"
+            />
+            {search && (
+              <button onClick={() => { setSearch(''); setPage(1) }} className="text-gray-400 hover:text-gray-600">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+          <Button size="sm" onClick={openCreate}>
+            <Plus className="h-4 w-4" /> Nuevo Tipo de Caja
+          </Button>
+        </div>
+      </div>
+
+      <Card padding={false}>
+        <Table>
+          <Thead>
+            <Tr>
+              <Th>Código</Th>
+              <Th>Nombre</Th>
+              <Th>Dimensiones (L×A×A cm)</Th>
+              <Th>Peso máx. (kg)</Th>
+              <Th>Estado</Th>
+              <Th>Acciones</Th>
+            </Tr>
+          </Thead>
+          <Tbody>
+            {isLoading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <Tr key={i}>{Array.from({ length: 6 }).map((_, j) => (
+                  <Td key={j}><div className="h-4 bg-gray-100 rounded animate-pulse w-20" /></Td>
+                ))}</Tr>
+              ))
+            ) : !data?.items.length ? (
+              <EmptyRow cols={6} message="No hay tipos de caja registrados" />
+            ) : (
+              data.items.map(b => (
+                <Tr key={b.id}>
+                  <Td><span className="font-mono font-medium text-primary-700">{b.code}</span></Td>
+                  <Td className="font-medium text-gray-900">{b.name}</Td>
+                  <Td className="text-xs text-gray-500">
+                    {b.length_cm != null || b.width_cm != null || b.height_cm != null
+                      ? `${b.length_cm ?? '—'} × ${b.width_cm ?? '—'} × ${b.height_cm ?? '—'}`
+                      : '—'}
+                  </Td>
+                  <Td className="text-xs text-gray-500">{b.max_weight_kg ?? '—'}</Td>
+                  <Td><Badge status={b.is_active ? 'active' : 'inactive'} /></Td>
+                  <Td>
+                    <button onClick={() => openEdit(b)} title="Editar"
+                      className="text-gray-500 hover:text-primary-700 transition-colors">
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  </Td>
+                </Tr>
+              ))
+            )}
+          </Tbody>
+        </Table>
+        <Pagination page={page} pageSize={PAGE_SIZE} total={data?.total ?? 0} onPageChange={setPage} />
+      </Card>
+
+      <Modal
+        open={open}
+        onClose={() => { setOpen(false); reset() }}
+        title={editing ? `Editar tipo de caja ${editing.code}` : 'Nuevo tipo de caja'}
+        size="lg"
+        footer={
+          <>
+            <Button variant="secondary" size="sm" onClick={() => { setOpen(false); reset() }}>Cancelar</Button>
+            <Button size="sm" disabled={!canSave} loading={saveMut.isPending}
+              onClick={() => saveMut.mutate()}>
+              {editing ? 'Guardar cambios' : 'Crear tipo de caja'}
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Input label="Código *" value={code} onChange={e => setCode(e.target.value)}
+              placeholder="Ej: CARTON_M" disabled={!!editing} />
+            <Input label="Nombre *" value={name} onChange={e => setName(e.target.value)}
+              placeholder="Ej: Cartón mediano" />
+          </div>
+          <Input label="Descripción" value={description} onChange={e => setDescription(e.target.value)}
+            placeholder="Opcional" />
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+            <Input label="Largo (cm)" type="number" value={length}
+              onChange={e => setLength(e.target.value)} placeholder="Opcional" />
+            <Input label="Ancho (cm)" type="number" value={width}
+              onChange={e => setWidth(e.target.value)} placeholder="Opcional" />
+            <Input label="Alto (cm)" type="number" value={height}
+              onChange={e => setHeight(e.target.value)} placeholder="Opcional" />
+            <Input label="Peso máx. (kg)" type="number" value={maxWeight}
+              onChange={e => setMaxWeight(e.target.value)} placeholder="Opcional" />
+          </div>
+        </div>
+      </Modal>
+    </div>
+  )
+}
+
 // ─── Ubicaciones ──────────────────────────────────────────
 function LocationsTab() {
   const qc = useQueryClient()
@@ -646,12 +1005,16 @@ function LocationsTab() {
 const PATH_TO_TAB: Record<string, Tab> = {
   '/master/products': 'productos',
   '/master/suppliers': 'proveedores',
+  '/master/customers': 'clientes',
+  '/master/box-types': 'tipos-caja',
   '/master/locations': 'ubicaciones',
 }
 
 const TAB_TO_PATH: Record<Tab, string> = {
   productos: '/master/products',
   proveedores: '/master/suppliers',
+  clientes: '/master/customers',
+  'tipos-caja': '/master/box-types',
   ubicaciones: '/master/locations',
 }
 
@@ -663,6 +1026,8 @@ export function MasterDataPage() {
   const tabs: { id: Tab; label: string; icon: React.ElementType }[] = [
     { id: 'productos', label: 'Productos', icon: Package },
     { id: 'proveedores', label: 'Proveedores', icon: Users },
+    { id: 'clientes', label: 'Clientes', icon: UserCheck },
+    { id: 'tipos-caja', label: 'Tipos de Caja', icon: Box },
     { id: 'ubicaciones', label: 'Ubicaciones', icon: MapPin },
   ]
 
@@ -671,7 +1036,7 @@ export function MasterDataPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Maestros de Datos</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Gestión de productos, proveedores y ubicaciones del almacén.
+          Gestión de productos, proveedores, clientes, tipos de caja y ubicaciones del almacén.
         </p>
       </div>
 
@@ -704,6 +1069,8 @@ export function MasterDataPage() {
       <div className="pt-2">
         {activeTab === 'productos' && <ProductsTab />}
         {activeTab === 'proveedores' && <SuppliersTab />}
+        {activeTab === 'clientes' && <CustomersTab />}
+        {activeTab === 'tipos-caja' && <BoxTypesTab />}
         {activeTab === 'ubicaciones' && <LocationsTab />}
       </div>
     </div>

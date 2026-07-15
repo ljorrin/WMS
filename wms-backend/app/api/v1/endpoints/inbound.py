@@ -686,6 +686,21 @@ async def get_rtv(rtv_id: UUID, db: DBDep, current_user: CurrentUserDep):
 
 
 @router.post(
+    "/rtv/{rtv_id}/approve",
+    status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
+    summary="Aprobar RTV pendiente",
+    dependencies=[Depends(require_permission("inbound:rtv:manage"))],
+)
+async def approve_rtv(rtv_id: UUID, db: DBDep, current_user: CurrentUserDep):
+    svc = _svc(db, current_user)
+    try:
+        await svc.approve_rtv(rtv_id)
+        await db.commit()
+    except InboundServiceError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+
+
+@router.post(
     "/rtv/{rtv_id}/ship",
     status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,
     summary="Registrar despacho de RTV",
