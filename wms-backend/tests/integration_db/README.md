@@ -35,7 +35,9 @@ se salta automáticamente** (no rompe la suite). El esquema se crea con
 `metadata.create_all` al inicio de cada test y se elimina al final; cada test corre en su
 propia transacción que se revierte (aislamiento).
 
-## Qué cubren (`test_schema_and_flows.py`)
+## Qué cubren
+
+### `test_schema_and_flows.py`
 1. **Esquema**: las ~51 tablas (Inbound + Outbound + Inventory + AI + core + master) se
    materializan en PostgreSQL.
 2. **Inbound**: ciclo de Orden de Compra — crear (DRAFT) → confirmar (CONFIRMED) con
@@ -44,7 +46,24 @@ propia transacción que se revierte (aislamiento).
    que el stock se descuenta y que se genera el movimiento. Este flujo era **no funcional**
    antes de la reconciliación de junio 2026.
 
-> Nota: estos tests se escribieron y validaron a nivel de colección/skip en un entorno sin
-> PostgreSQL. Ejecútalos contra tu PostgreSQL para validación completa. Para datos maestros
-> los fixtures construyen el grafo mínimo (tenant, company, warehouse, product, supplier,
-> location, inventory level) a partir de los campos obligatorios reales de los modelos.
+### `test_e2e_flow.py` (Fase 0.3 del plan de implementación)
+Un único test de punta a punta que recorre el flujo completo contra PostgreSQL real:
+
+```
+PO → ASN → GRN (ruptura de cadena de frío) → QC → Putaway (con override de ubicación)
+  → SO-A → Wave → Pick → Pack (BoxType + SSCC) → Ship → Deliver
+  → SO-B → Streaming (waveless, sin ola) → Pick
+  → Labor: estándar + tarea (asignar → iniciar → completar) con performance_pct calculado
+  → Slotting: política → análisis ABC → recomendación → aplicar
+  → KPIs: dashboards de inbound / outbound / labor
+  → Reconciliación: kardex (Σ RECEIPT − Σ PICK) == stock final (InventoryLevel)
+```
+
+Encontró y corrigió dos bugs reales al ejecutarse por primera vez contra PostgreSQL:
+`performance_pct` desbordaba `NUMERIC(7,2)` en tareas completadas casi instantáneamente
+(ahora acotado en `LaborService.compute_performance_pct`), y `_check_stock_alerts`
+referenciaba `product.min_stock` (no existe; el campo real es `reorder_point`).
+
+> Nota: los fixtures (`seed`/`inventory_level` en `conftest.py`, `flow_seed` en
+> `test_e2e_flow.py`) construyen el grafo mínimo de datos maestros a partir de los
+> campos obligatorios reales de los modelos — no de mocks.

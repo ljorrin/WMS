@@ -747,8 +747,8 @@ class InventoryService:
 
             from app.models.inventory import StockAlert
 
-            # Alerta: Stock bajo mínimo
-            if product.min_stock and summary["total_available"] < product.min_stock:
+            # Alerta: Stock bajo el punto de reorden
+            if product.reorder_point and summary["total_available"] < product.reorder_point:
                 alert = StockAlert(
                     tenant_id=self.tenant_id,
                     warehouse_id=warehouse_id,
@@ -756,8 +756,8 @@ class InventoryService:
                     alert_type="below_min",
                     severity="warning",
                     current_quantity=summary["total_available"],
-                    threshold_quantity=product.min_stock,
-                    message=f"Stock por debajo del mínimo: {summary['total_available']} < {product.min_stock}",
+                    threshold_quantity=product.reorder_point,
+                    message=f"Stock por debajo del punto de reorden: {summary['total_available']} < {product.reorder_point}",
                 )
                 self.db.add(alert)
 

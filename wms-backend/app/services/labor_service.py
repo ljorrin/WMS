@@ -78,7 +78,13 @@ class LaborService:
         std = Decimal(str(standard_minutes or 0))
         if actual <= 0:
             return None
-        return (std / actual * Decimal("100")).quantize(Decimal("0.01"))
+        pct = (std / actual * Decimal("100")).quantize(Decimal("0.01"))
+        # Tope defensivo: una tarea completada casi instantáneamente (actual_minutes
+        # ínfimo, típico de datos de prueba/demo) puede producir un cociente
+        # absurdo que desborda la columna NUMERIC(7,2). Por encima de este techo
+        # el número deja de ser informativo (es "extremadamente rápido" de todas
+        # formas), así que se limita en vez de fallar la escritura en BD.
+        return min(pct, Decimal("9999.99"))
 
     @staticmethod
     def choose_next_task(
