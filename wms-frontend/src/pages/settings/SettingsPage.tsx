@@ -1,11 +1,12 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   User as UserIcon, KeyRound, Warehouse as WarehouseIcon,
   ShieldCheck, Plug, CheckCircle2, AlertCircle, Building2, BookOpen,
-  Plus, Trash2, Lock, Smartphone, Pencil,
+  Plus, Trash2, Lock, Smartphone, Pencil, RadioTower, Rss, ExternalLink,
 } from 'lucide-react'
-import { authApi, warehouseApi, integrationsApi } from '@/api/endpoints'
+import { authApi, warehouseApi, integrationsApi, hardwareApi } from '@/api/endpoints'
 import { useAuthStore } from '@/store/authStore'
 import { useReasonCodes } from '@/hooks/useReasonCodes'
 import { Card, CardHeader, CardTitle } from '@/components/ui/Card'
@@ -14,8 +15,10 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Table, Thead, Tbody, Tr, Th, Td, EmptyRow } from '@/components/ui/Table'
-import type { Warehouse } from '@/types'
+import type { Warehouse, RfidReader, Company } from '@/types'
 import toast from 'react-hot-toast'
+
+const RFID_VENDORS = ['zebra', 'impinj', 'honeywell', 'alien', 'otro']
 
 const WAREHOUSE_TYPES = [
   'distribution_center', 'factory_warehouse', 'transit_warehouse', 'return_center',
@@ -26,7 +29,7 @@ const WAREHOUSE_STATUSES = ['active', 'inactive', 'maintenance']
 export function SettingsPage() {
   const { user } = useAuthStore()
   const qc = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'perfil' | 'bodegas' | 'integraciones' | 'nomencladores'>('perfil')
+  const [activeTab, setActiveTab] = useState<'perfil' | 'empresas' | 'bodegas' | 'integraciones' | 'rfid' | 'nomencladores'>('perfil')
 
   // Gestión de razones de ajuste
   const { all: reasonCodes, addCode, removeCode } = useReasonCodes()
@@ -99,13 +102,55 @@ export function SettingsPage() {
   const { data: warehouses, isLoading: whLoading } = useQuery({
     queryKey: ['warehouses', 'settings'],
     queryFn: () => warehouseApi.list({ page_size: 100 }),
-    enabled: activeTab === 'bodegas'
+    enabled: activeTab === 'bodegas' || activeTab === 'rfid'
   })
 
-  const { data: companies } = useQuery({
+  const { data: companies, isLoading: companiesLoading } = useQuery({
     queryKey: ['companies'],
     queryFn: () => warehouseApi.listCompanies(),
-    enabled: activeTab === 'bodegas' && !!user?.is_superadmin,
+    enabled: (activeTab === 'bodegas' || activeTab === 'empresas') && !!user?.is_superadmin,
+  })
+
+  const [coOpen, setCoOpen] = useState(false)
+  const [coEditing, setCoEditing] = useState<Company | null>(null)
+  const [coName, setCoName] = useState('')
+  const [coLegalName, setCoLegalName] = useState('')
+  const [coAddress, setCoAddress] = useState('')
+  const [coPhone, setCoPhone] = useState('')
+  const [coEmail, setCoEmail] = useState('')
+  const [coLogoUrl, setCoLogoUrl] = useState('')
+  const [coGln, setCoGln] = useState('')
+  const [coPrefix, setCoPrefix] = useState('')
+
+  const resetCoForm = () => {
+    setCoName(''); setCoLegalName(''); setCoAddress(''); setCoPhone('');
+    setCoEmail(''); setCoLogoUrl(''); setCoGln(''); setCoPrefix(''); setCoEditing(null)
+  }
+
+  const openCreateCo = () => { resetCoForm(); setCoOpen(true) }
+  const openEditCo = (c: Company) => {
+    setCoEditing(c)
+    setCoName(c.name); setCoLegalName(c.legal_name ?? '')
+    setCoAddress(c.address ?? ''); setCoPhone(c.phone ?? ''); setCoEmail(c.email ?? '')
+    setCoLogoUrl(c.logo_url ?? ''); setCoGln(c.gln ?? ''); setCoPrefix(c.gs1_company_prefix ?? '')
+    setCoOpen(true)
+  }
+
+  const saveCoMut = useMutation({
+    mutationFn: () => {
+      const data = {
+        name: coName, legal_name: coLegalName || undefined,
+        address: coAddress || undefined, phone: coPhone || undefined, email: coEmail || undefined,
+        logo_url: coLogoUrl || undefined, gln: coGln || undefined, gs1_company_prefix: coPrefix || undefined
+      }
+      return coEditing ? warehouseApi.updateCompany(coEditing.id, data) : warehouseApi.createCompany(data)
+    },
+    onSuccess: () => {
+      toast.success(coEditing ? 'Empresa actualizada' : 'Empresa creada')
+      qc.invalidateQueries({ queryKey: ['companies'] })
+      setCoOpen(false); resetCoForm()
+    },
+    onError: () => toast.error('Error al guardar la empresa'),
   })
 
   const [whOpen, setWhOpen] = useState(false)
@@ -185,6 +230,92 @@ export function SettingsPage() {
     dgi: 'Facturación Electrónica (DGI)',
   }
 
+  // -- RFID / Hardware --
+  const navigate = useNavigate()
+  const { data: rfidReaders, isLoading: rfidLoading } = useQuery({
+    queryKey: ['rfid-readers', 'settings'],
+    queryFn: () => hardwareApi.getReaders(),
+    enabled: activeTab === 'rfid',
+  })
+
+  const [readerOpen, setReaderOpen] = useState(false)
+  const [readerEditing, setReaderEditing] = useState<RfidReader | null>(null)
+  const [readerWhId, setReaderWhId] = useState('')
+  const [readerCode, setReaderCode] = useState('')
+  const [readerName, setReaderName] = useState('')
+  const [readerVendor, setReaderVendor] = useState('zebra')
+  const [readerModel, setReaderModel] = useState('')
+  const [readerIp, setReaderIp] = useState('')
+  const [readerPort, setReaderPort] = useState('5084')
+  const [readerNotes, setReaderNotes] = useState('')
+
+  const resetReaderForm = () => {
+    setReaderWhId(''); setReaderCode(''); setReaderName(''); setReaderVendor('zebra')
+    setReaderModel(''); setReaderIp(''); setReaderPort('5084'); setReaderNotes('')
+    setReaderEditing(null)
+  }
+
+  const openCreateReader = () => { resetReaderForm(); setReaderOpen(true) }
+  const openEditReader = (r: RfidReader) => {
+    setReaderEditing(r)
+    setReaderWhId(r.warehouse_id); setReaderCode(r.code); setReaderName(r.name)
+    setReaderVendor(r.vendor ?? 'zebra'); setReaderModel(r.model ?? '')
+    setReaderIp(r.ip_address ?? ''); setReaderPort(String(r.port))
+    setReaderNotes(r.notes ?? '')
+    setReaderOpen(true)
+  }
+
+  const saveReaderMut = useMutation({
+    mutationFn: () => {
+      if (readerEditing) {
+        return hardwareApi.updateReader(readerEditing.id, {
+          name: readerName, vendor: readerVendor || undefined, model: readerModel || undefined,
+          ip_address: readerIp || undefined, port: Number(readerPort) || 5084,
+          notes: readerNotes || undefined,
+        })
+      }
+      return hardwareApi.createReader({
+        warehouse_id: readerWhId, code: readerCode, name: readerName,
+        vendor: readerVendor || undefined, model: readerModel || undefined,
+        ip_address: readerIp || undefined, port: Number(readerPort) || 5084,
+        notes: readerNotes || undefined,
+      })
+    },
+    onSuccess: () => {
+      toast.success(readerEditing ? 'Reader actualizado' : 'Reader RFID registrado')
+      qc.invalidateQueries({ queryKey: ['rfid-readers'] })
+      setReaderOpen(false); resetReaderForm()
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail ?? 'No se pudo guardar el reader'),
+  })
+
+  const canSaveReader = readerEditing
+    ? readerName.trim().length > 0
+    : readerWhId.trim().length > 0 && readerCode.trim().length > 0 && readerName.trim().length > 0
+
+  const [antennaReader, setAntennaReader] = useState<RfidReader | null>(null)
+  const { data: readerAntennas } = useQuery({
+    queryKey: ['rfid-antennas', antennaReader?.id],
+    queryFn: () => hardwareApi.getAntennas(antennaReader!.id),
+    enabled: !!antennaReader,
+  })
+  const [antNumber, setAntNumber] = useState('1')
+  const [antName, setAntName] = useState('')
+  const [antPower, setAntPower] = useState('')
+
+  const createAntennaMut = useMutation({
+    mutationFn: () => hardwareApi.createAntenna(antennaReader!.id, {
+      antenna_number: Number(antNumber), name: antName,
+      transmit_power_dbm: antPower ? Number(antPower) : undefined,
+    }),
+    onSuccess: () => {
+      toast.success('Antena registrada')
+      qc.invalidateQueries({ queryKey: ['rfid-antennas', antennaReader?.id] })
+      setAntNumber('1'); setAntName(''); setAntPower('')
+    },
+    onError: (err: any) => toast.error(err?.response?.data?.detail ?? 'No se pudo registrar la antena'),
+  })
+
   return (
     <div className="space-y-6">
       <div>
@@ -198,10 +329,12 @@ export function SettingsPage() {
       <div className="border-b border-gray-200">
         <nav className="-mb-px flex space-x-6" aria-label="Tabs">
           {[
-            { id: 'perfil', name: 'Perfil y Seguridad', icon: UserIcon },
+            { id: 'perfil', name: 'Perfil', icon: UserIcon },
+            { id: 'empresas', name: 'Empresas', icon: Building2 },
             { id: 'bodegas', name: 'Bodegas', icon: WarehouseIcon },
             { id: 'integraciones', name: 'Integraciones', icon: Plug },
-            { id: 'nomencladores', name: 'Nomencladores (Diccionarios)', icon: BookOpen },
+            { id: 'rfid', name: 'RFID', icon: RadioTower },
+            { id: 'nomencladores', name: 'Nomencladores', icon: BookOpen },
           ].map((tab) => {
             const isActive = activeTab === tab.id
             const Icon = tab.icon
@@ -358,6 +491,114 @@ export function SettingsPage() {
             </Card>
           </div>
         )}
+
+        {/* --- EMPRESAS --- */}
+        {activeTab === 'empresas' && (
+          <Card padding={false}>
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Building2 className="h-5 w-5 text-gray-400" /> Empresas ({companies?.length ?? 0})
+              </CardTitle>
+              {user?.is_superadmin && (
+                <Button size="sm" onClick={openCreateCo}>
+                  <Plus className="h-4 w-4" /> Nueva Empresa
+                </Button>
+              )}
+            </div>
+            {!user?.is_superadmin && (
+              <p className="px-5 pt-3 text-xs text-gray-400">
+                Solo un superadministrador puede gestionar empresas.
+              </p>
+            )}
+            <Table>
+              <Thead>
+                <Tr>
+                  <Th>Logo</Th>
+                  <Th>Nombre</Th>
+                  <Th>Prefijo GS1</Th>
+                  <Th>GLN</Th>
+                  <Th>Contacto</Th>
+                  {user?.is_superadmin && <Th>Acciones</Th>}
+                </Tr>
+              </Thead>
+              <Tbody>
+                {companiesLoading ? (
+                  <Tr><Td colSpan={user?.is_superadmin ? 6 : 5} className="text-center py-4">Cargando...</Td></Tr>
+                ) : !companies?.length ? (
+                  <EmptyRow cols={user?.is_superadmin ? 6 : 5} message="No hay empresas registradas" />
+                ) : (
+                  companies.map(c => (
+                    <Tr key={c.id}>
+                      <Td>
+                        {c.logo_url ? (
+                          <img src={c.logo_url} alt={c.name} className="h-8 w-8 object-contain rounded border border-gray-200" />
+                        ) : (
+                          <div className="h-8 w-8 bg-gray-100 flex items-center justify-center rounded border border-gray-200 text-gray-400">
+                            <Building2 className="h-4 w-4" />
+                          </div>
+                        )}
+                      </Td>
+                      <Td>
+                        <div className="flex flex-col">
+                          <span className="font-medium text-gray-900">{c.name}</span>
+                          <span className="text-xs text-gray-500">{c.legal_name ?? '—'}</span>
+                        </div>
+                      </Td>
+                      <Td className="font-mono text-sm">{c.gs1_company_prefix ?? '—'}</Td>
+                      <Td className="font-mono text-sm">{c.gln ?? '—'}</Td>
+                      <Td>
+                        <div className="text-xs text-gray-600">
+                          {c.email && <div>{c.email}</div>}
+                          {c.phone && <div>{c.phone}</div>}
+                        </div>
+                      </Td>
+                      {user?.is_superadmin && (
+                        <Td>
+                          <button onClick={() => openEditCo(c)} title="Editar" className="text-gray-500 hover:text-primary-700 transition-colors">
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                        </Td>
+                      )}
+                    </Tr>
+                  ))
+                )}
+              </Tbody>
+            </Table>
+          </Card>
+        )}
+
+        <Modal
+          open={coOpen}
+          onClose={() => { setCoOpen(false); resetCoForm() }}
+          title={coEditing ? `Editar empresa ${coEditing.name}` : 'Nueva empresa'}
+          size="lg"
+          footer={
+            <>
+              <Button variant="secondary" size="sm" onClick={() => { setCoOpen(false); resetCoForm() }}>Cancelar</Button>
+              <Button size="sm" disabled={!coName.trim()} loading={saveCoMut.isPending}
+                onClick={() => saveCoMut.mutate()}>
+                {coEditing ? 'Guardar cambios' : 'Crear empresa'}
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input label="Nombre comercial *" value={coName} onChange={e => setCoName(e.target.value)} />
+              <Input label="Razón Social" value={coLegalName} onChange={e => setCoLegalName(e.target.value)} />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input label="Prefijo GS1" value={coPrefix} onChange={e => setCoPrefix(e.target.value)} placeholder="Ej: 7451234" />
+              <Input label="GLN" value={coGln} onChange={e => setCoGln(e.target.value)} placeholder="Ej: 7451234000001" />
+            </div>
+            <Input label="URL del Logo" value={coLogoUrl} onChange={e => setCoLogoUrl(e.target.value)} placeholder="https://..." />
+            <Input label="Dirección" value={coAddress} onChange={e => setCoAddress(e.target.value)} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input label="Teléfono" value={coPhone} onChange={e => setCoPhone(e.target.value)} />
+              <Input label="Correo electrónico" type="email" value={coEmail} onChange={e => setCoEmail(e.target.value)} />
+            </div>
+          </div>
+        </Modal>
 
         {/* --- BODEGAS --- */}
         {activeTab === 'bodegas' && (
@@ -567,6 +808,170 @@ export function SettingsPage() {
             )}
           </div>
         )}
+
+        {/* --- RFID / HARDWARE --- */}
+        {activeTab === 'rfid' && (
+          <div className="space-y-6">
+            <Card className="bg-primary-50 border-primary-100">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Rss className="h-5 w-5 text-primary-600 shrink-0" />
+                  <p className="text-sm text-primary-900">
+                    Aquí se registran los readers/antenas físicos. Para simular lecturas, ver el historial
+                    decodificado (GS1 EPC) y generar etiquetas ZPL de prueba, ve a la vista de <b>Pruebas RFID</b>.
+                  </p>
+                </div>
+                <Button size="sm" variant="secondary" onClick={() => navigate('/hardware/rfid')}>
+                  <ExternalLink className="h-4 w-4" /> Probar RFID
+                </Button>
+              </div>
+            </Card>
+
+            <Card padding={false}>
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <RadioTower className="h-5 w-5 text-gray-400" /> Readers RFID ({rfidReaders?.items.length ?? 0})
+                </CardTitle>
+                <Button size="sm" onClick={openCreateReader}>
+                  <Plus className="h-4 w-4" /> Nuevo Reader
+                </Button>
+              </div>
+              <Table>
+                <Thead>
+                  <Tr>
+                    <Th>Código</Th><Th>Nombre</Th><Th>Fabricante</Th><Th>IP:Puerto</Th>
+                    <Th>Protocolo</Th><Th>Estado</Th><Th>Última conexión</Th><Th>Antenas</Th>
+                  </Tr>
+                </Thead>
+                <Tbody>
+                  {rfidLoading ? (
+                    Array.from({ length: 2 }).map((_, i) => (
+                      <Tr key={i}>{Array.from({ length: 8 }).map((_, j) => (
+                        <Td key={j}><div className="h-4 bg-gray-100 rounded animate-pulse w-16" /></Td>
+                      ))}</Tr>
+                    ))
+                  ) : !rfidReaders?.items.length ? (
+                    <EmptyRow cols={8} message="No hay readers RFID registrados" />
+                  ) : (
+                    rfidReaders.items.map(r => (
+                      <Tr key={r.id}>
+                        <Td className="font-mono font-medium text-primary-700">{r.code}</Td>
+                        <Td className="font-medium text-gray-900">{r.name}</Td>
+                        <Td className="text-xs text-gray-500 capitalize">{r.vendor ?? '—'} {r.model ?? ''}</Td>
+                        <Td className="font-mono text-xs text-gray-600">{r.ip_address ?? '—'}:{r.port}</Td>
+                        <Td className="text-xs text-gray-500">{r.protocol}</Td>
+                        <Td><Badge status={r.status} /></Td>
+                        <Td className="text-xs text-gray-500">{r.last_seen_at ? new Date(r.last_seen_at).toLocaleString('es-PA') : 'Nunca'}</Td>
+                        <Td>
+                          <div className="flex items-center gap-2.5">
+                            <button onClick={() => openEditReader(r)} title="Editar reader"
+                              className="text-gray-500 hover:text-primary-700 transition-colors">
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button onClick={() => setAntennaReader(r)} title="Gestionar antenas"
+                              className="text-gray-500 hover:text-primary-700 transition-colors">
+                              <RadioTower className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </Td>
+                      </Tr>
+                    ))
+                  )}
+                </Tbody>
+              </Table>
+            </Card>
+          </div>
+        )}
+
+        <Modal
+          open={readerOpen}
+          onClose={() => { setReaderOpen(false); resetReaderForm() }}
+          title={readerEditing ? `Editar reader ${readerEditing.code}` : 'Nuevo Reader RFID'}
+          footer={
+            <>
+              <Button variant="secondary" size="sm" onClick={() => { setReaderOpen(false); resetReaderForm() }}>Cancelar</Button>
+              <Button size="sm" disabled={!canSaveReader} loading={saveReaderMut.isPending}
+                onClick={() => saveReaderMut.mutate()}>
+                {readerEditing ? 'Guardar cambios' : 'Registrar'}
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            {!readerEditing && (
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700">Bodega *</label>
+                <select value={readerWhId} onChange={e => setReaderWhId(e.target.value)}
+                  className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm">
+                  <option value="">Seleccionar…</option>
+                  {warehouses?.items.map(w => <option key={w.id} value={w.id}>{w.code} — {w.name}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="Código *" value={readerCode} onChange={e => setReaderCode(e.target.value)}
+                placeholder="READER-DOCK-01" disabled={!!readerEditing} />
+              <Input label="Nombre *" value={readerName} onChange={e => setReaderName(e.target.value)}
+                placeholder="Reader muelle 1" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-sm font-medium text-gray-700">Fabricante</label>
+                <select value={readerVendor} onChange={e => setReaderVendor(e.target.value)}
+                  className="h-9 rounded-lg border border-gray-300 bg-white px-3 text-sm capitalize">
+                  {RFID_VENDORS.map(v => <option key={v} value={v}>{v}</option>)}
+                </select>
+              </div>
+              <Input label="Modelo" value={readerModel} onChange={e => setReaderModel(e.target.value)}
+                placeholder="FX9500" />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="IP del reader" value={readerIp} onChange={e => setReaderIp(e.target.value)}
+                placeholder="169.254.1.1" />
+              <Input label="Puerto LLRP" type="number" value={readerPort}
+                onChange={e => setReaderPort(e.target.value)} placeholder="5084" />
+            </div>
+            <Input label="Notas" value={readerNotes} onChange={e => setReaderNotes(e.target.value)}
+              placeholder="Opcional" />
+          </div>
+        </Modal>
+
+        <Modal
+          open={!!antennaReader}
+          onClose={() => setAntennaReader(null)}
+          title={`Antenas de ${antennaReader?.code ?? ''}`}
+        >
+          <div className="space-y-4">
+            <div className="text-sm space-y-1 max-h-40 overflow-auto">
+              {!readerAntennas?.items.length ? (
+                <p className="text-gray-400 italic">Sin antenas registradas</p>
+              ) : (
+                readerAntennas.items.map(a => (
+                  <div key={a.id} className="flex items-center justify-between rounded-lg px-2 py-1.5 bg-gray-50">
+                    <span className="font-mono text-xs text-gray-600">#{a.antenna_number}</span>
+                    <span className="text-gray-700 flex-1 px-2 truncate">{a.name}</span>
+                    <span className="text-xs text-gray-400">{a.transmit_power_dbm != null ? `${a.transmit_power_dbm} dBm` : '—'}</span>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="pt-3 border-t border-gray-100 space-y-2">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Agregar antena</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Input label="Puerto #" type="number" min={1} max={32} value={antNumber}
+                  onChange={e => setAntNumber(e.target.value)} />
+                <Input label="Potencia (dBm)" type="number" value={antPower}
+                  onChange={e => setAntPower(e.target.value)} placeholder="Opcional" />
+              </div>
+              <Input label="Nombre" value={antName} onChange={e => setAntName(e.target.value)}
+                placeholder="Ej: Antena muelle 1 - puerta A" />
+              <Button size="sm" disabled={!antName.trim()} loading={createAntennaMut.isPending}
+                onClick={() => createAntennaMut.mutate()}>
+                Agregar antena
+              </Button>
+            </div>
+          </div>
+        </Modal>
 
         {/* --- NOMENCLADORES (DICCIONARIOS) --- */}
         {activeTab === 'nomencladores' && (

@@ -22,7 +22,7 @@ from app.core.dependencies import CurrentUserDep, DBDep, PaginationDep, require_
 from app.core.exceptions import RfidDeviceError, RfidServiceError
 from app.schemas.rfid import (
     RfidAntennaCreate, RfidAntennaResponse, RfidReaderCreate, RfidReaderResponse,
-    RfidTagReadIngest, RfidTagReadResponse, ZplLabelResponse, ZplPalletLabelRequest,
+    RfidReaderUpdate, RfidTagReadIngest, RfidTagReadResponse, ZplLabelResponse, ZplPalletLabelRequest,
 )
 from app.services.rfid_service import RfidService
 from app.services.zpl_service import ZplGenerationError, build_sscc_pallet_label_zpl
@@ -48,6 +48,23 @@ async def register_reader(
         )
     except RfidDeviceError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    return reader
+
+
+@router.put(
+    "/readers/{reader_id}", response_model=RfidReaderResponse,
+    summary="Editar reader RFID (IP, modelo, vendor, notas)",
+    dependencies=[Depends(require_permission("hardware:manage"))],
+)
+async def update_reader(
+    reader_id: uuid.UUID, payload: RfidReaderUpdate, db: DBDep, current_user: CurrentUserDep,
+) -> RfidReaderResponse:
+    try:
+        reader = await _svc(db).update_reader(
+            current_user.tenant_id, reader_id, payload.model_dump(exclude_unset=True)
+        )
+    except RfidServiceError as e:
+        raise HTTPException(status_code=404, detail=str(e))
     return reader
 
 
@@ -131,6 +148,18 @@ async def list_tag_reads(
         "items": [RfidTagReadResponse.model_validate(r) for r in rows],
         "total": total, "page": pagination.page, "page_size": pagination.page_size,
     }
+
+
+@router.delete(
+    "/tag-reads", summary="Limpiar historial de lecturas (borrado definitivo)",
+    dependencies=[Depends(require_permission("hardware:manage"))],
+)
+async def clear_tag_reads(
+    db: DBDep, current_user: CurrentUserDep,
+    warehouse_id: Optional[uuid.UUID] = Query(None),
+) -> dict:
+    deleted = await _svc(db).clear_tag_reads(current_user.tenant_id, warehouse_id)
+    return {"deleted": deleted}
 
 
 # ── Dashboard ──────────────────────────────────────────────────────────────────

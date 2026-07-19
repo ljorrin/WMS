@@ -225,6 +225,7 @@ class Company(WMSTenantBase):
     address: Mapped[Optional[str]] = mapped_column(Text)
     city: Mapped[Optional[str]] = mapped_column(String(100))
     country: Mapped[str] = mapped_column(String(2), default="PA")
+    logo_url: Mapped[Optional[str]] = mapped_column(String(500), comment="URL del logo de la empresa")
 
     # GS1
     gs1_company_prefix: Mapped[Optional[str]] = mapped_column(

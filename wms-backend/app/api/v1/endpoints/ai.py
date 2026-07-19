@@ -14,11 +14,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.core.dependencies import CurrentUserDep, DBDep, PaginationDep, require_permission
+from app.core.dependencies import CurrentUserDep, DBDep, PaginationDep, TokenDep, require_permission
 from app.schemas.ai import (
     AnomalyResolveRequest, AnomalyScanRequest, AnomalyScanResponse,
     AlertResolveRequest, ChatRequest, ChatResponse,
-    ConversationListResponse, ConversationResponse,
+    ConversationDetailResponse, ConversationListResponse, ConversationResponse,
     ForecastListResponse, ForecastRequest, ForecastResponse,
     RouteOptimizeRequest, RouteOptimizationResponse,
 )
@@ -307,15 +307,19 @@ async def resolve_anomaly(
 @router.post(
     "/assistant/chat",
     response_model=ChatResponse,
-    summary="Enviar mensaje al asistente WMS",
+    summary="Enviar mensaje al asistente WMS (agéntico: puede invocar tools reales)",
     dependencies=[Depends(require_permission("ai:assistant:use"))],
 )
 async def chat(
     payload: ChatRequest,
     db: DBDep,
     current_user: CurrentUserDep,
+    token_data: TokenDep,
 ):
-    svc = _assistant_svc(db, current_user)
+    svc = WMSAssistant(
+        db, current_user.tenant_id, current_user.id,
+        permissions=frozenset(token_data.permissions), is_superadmin=current_user.is_superadmin,
+    )
     result = await svc.chat(
         message=payload.message,
         conversation_id=payload.conversation_id,
@@ -347,7 +351,7 @@ async def list_conversations(
 
 @router.get(
     "/assistant/conversations/{conversation_id}",
-    response_model=ConversationResponse,
+    response_model=ConversationDetailResponse,
     summary="Detalle de conversación con mensajes",
     dependencies=[Depends(require_permission("ai:assistant:use"))],
 )

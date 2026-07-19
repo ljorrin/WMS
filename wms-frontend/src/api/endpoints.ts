@@ -16,6 +16,8 @@ import type {
   LaborStandard, LaborTask, LaborDashboardMetrics,
   SlottingPolicy, SlottingRecommendation, SlottingAnalyzeResult, SlottingDashboardMetrics,
   StreamingTask, StreamingMetrics,
+  RfidReader, RfidAntenna, RfidTagRead, RfidDashboardMetrics, ZplLabelResult,
+  ChatResponse, AIConversation, AIConversationDetail,
 } from '@/types'
 
 interface ListResponse<T> { items: T[]; total: number; page: number; page_size: number }
@@ -74,6 +76,12 @@ export const warehouseApi = {
 
   listCompanies: () =>
     api.get<Company[]>('/warehouses/companies').then(r => r.data),
+
+  createCompany: (data: unknown) =>
+    api.post<Company>('/warehouses/companies', data).then(r => r.data),
+
+  updateCompany: (id: string, data: unknown) =>
+    api.put<Company>(`/warehouses/companies/${id}`, data).then(r => r.data),
 }
 
 // ── MASTER DATA ───────────────────────────────────────
@@ -480,4 +488,57 @@ export const streamingApi = {
     api.get<StreamingMetrics>('/streaming/metrics', {
       params: warehouseId ? { warehouse_id: warehouseId } : {},
     }).then(r => r.data),
+}
+
+// ── HARDWARE RFID/RF + ETIQUETAS ZPL (Fase 2) ────────
+export const hardwareApi = {
+  getReaders: (warehouseId?: string) =>
+    api.get<{ items: RfidReader[] }>('/hardware/readers', {
+      params: warehouseId ? { warehouse_id: warehouseId } : {},
+    }).then(r => r.data),
+
+  createReader: (data: unknown) =>
+    api.post<RfidReader>('/hardware/readers', data).then(r => r.data),
+
+  updateReader: (id: string, data: unknown) =>
+    api.put<RfidReader>(`/hardware/readers/${id}`, data).then(r => r.data),
+
+  getAntennas: (readerId: string) =>
+    api.get<{ items: RfidAntenna[] }>(`/hardware/readers/${readerId}/antennas`).then(r => r.data),
+
+  createAntenna: (readerId: string, data: unknown) =>
+    api.post<RfidAntenna>(`/hardware/readers/${readerId}/antennas`, data).then(r => r.data),
+
+  ingestTagRead: (data: unknown) =>
+    api.post<RfidTagRead>('/hardware/tag-reads', data).then(r => r.data),
+
+  getTagReads: (params?: Record<string, unknown>) =>
+    api.get<PaginatedResponse<RfidTagRead>>('/hardware/tag-reads', { params }).then(r => r.data),
+
+  clearTagReads: (warehouseId?: string) =>
+    api.delete<{ deleted: number }>('/hardware/tag-reads', {
+      params: warehouseId ? { warehouse_id: warehouseId } : {},
+    }).then(r => r.data),
+
+  getDashboard: (warehouseId?: string) =>
+    api.get<RfidDashboardMetrics>('/hardware/dashboard', {
+      params: warehouseId ? { warehouse_id: warehouseId } : {},
+    }).then(r => r.data),
+
+  generateZplSscc: (data: unknown) =>
+    api.post<ZplLabelResult>('/hardware/labels/zpl/sscc', data).then(r => r.data),
+}
+
+// ── ASISTENTE IA AGÉNTICO (Fase 5) ────────────────────
+export const aiApi = {
+  chat: (message: string, conversationId?: string) =>
+    api.post<ChatResponse>('/ai/assistant/chat', {
+      message, conversation_id: conversationId,
+    }).then(r => r.data),
+
+  getConversations: (params?: Record<string, unknown>) =>
+    api.get<ListResponse<AIConversation>>('/ai/assistant/conversations', { params }).then(r => r.data),
+
+  getConversation: (id: string) =>
+    api.get<AIConversationDetail>(`/ai/assistant/conversations/${id}`).then(r => r.data),
 }

@@ -24,6 +24,15 @@ class RfidReaderCreate(BaseModel):
     notes: Optional[str] = Field(None, max_length=255)
 
 
+class RfidReaderUpdate(BaseModel):
+    name: Optional[str] = Field(None, max_length=120)
+    vendor: Optional[str] = Field(None, max_length=30)
+    model: Optional[str] = Field(None, max_length=60)
+    ip_address: Optional[str] = Field(None, max_length=45)
+    port: Optional[int] = Field(None, ge=1, le=65535)
+    notes: Optional[str] = Field(None, max_length=255)
+
+
 class RfidReaderResponse(BaseModel):
     id: uuid.UUID
     warehouse_id: uuid.UUID

@@ -4,7 +4,7 @@ import {
   BarChart3, Settings, LogOut, ChevronDown, Warehouse,
   ClipboardList, Boxes, Route, PackageCheck, Ship,
   RefreshCw, AlertCircle, ScanLine, Database, Users, UserCheck, MapPin, Box,
-  Undo2, ListChecks, ArrowRightLeft, Waves, HardHat, Target,
+  Undo2, ListChecks, ArrowRightLeft, Waves, HardHat, Target, RadioTower, Bot,
 } from 'lucide-react'
 import { cn } from '@/utils/cn'
 import { useAuthStore } from '@/store/authStore'
@@ -60,6 +60,8 @@ const navItems: NavItem[] = [
   },
   { label: 'Labor Management', icon: HardHat, href: '/labor' },
   { label: 'Slotting Dinámico', icon: Target, href: '/slotting' },
+  { label: 'Pruebas RFID', icon: RadioTower, href: '/hardware/rfid' },
+  { label: 'Asistente IA', icon: Bot, href: '/ai/assistant' },
   { label: 'Configuración', icon: Settings, href: '/settings' },
 ]
 

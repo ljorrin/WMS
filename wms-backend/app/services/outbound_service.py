@@ -453,10 +453,18 @@ class OutboundService:
                 f"La tarea de empaque debe estar IN_PROGRESS. Estado: {task.status}"
             )
 
-        # Generar SSCC GS1 único si el operario no lo capturó (FR-056)
-        if not sscc:
-            from app.core.gs1 import generate_sscc
-            sscc = generate_sscc(company_prefix="0000000")
+        # Generar SSCC GS1 único (obligatorio y generado por el sistema)
+        from app.core.gs1 import generate_sscc
+        from app.models.core import Warehouse, Company
+        so = await self.so_repo.get_by_id(task.so_id)
+        if not so:
+            raise OutboundServiceError("Orden de venta no encontrada para generar SSCC")
+        wh = await self.db.get(Warehouse, so.warehouse_id)
+        if not wh:
+            raise OutboundServiceError("Bodega no encontrada para generar SSCC")
+        company = await self.db.get(Company, wh.company_id)
+        prefix = company.gs1_company_prefix if company and company.gs1_company_prefix else "0000000"
+        sscc = generate_sscc(company_prefix=prefix)
 
         await self.pack_repo.complete(
             task_id=task_id,

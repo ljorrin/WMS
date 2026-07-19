@@ -21,6 +21,16 @@ export interface Company {
   id: string
   name: string
   legal_name?: string | null
+  ruc?: string | null
+  dv?: string | null
+  email?: string | null
+  phone?: string | null
+  address?: string | null
+  city?: string | null
+  country: string
+  gs1_company_prefix?: string | null
+  gln?: string | null
+  logo_url?: string | null
 }
 
 export interface TokenResponse {
@@ -811,4 +821,100 @@ export interface StreamingMetrics {
   in_progress: number
   operators_active: number
   wip_by_operator: Record<string, number>
+}
+
+// ── Hardware RFID/RF + Etiquetas ZPL (Fase 2) ──────────
+export interface RfidReader {
+  id: string
+  warehouse_id: string
+  code: string
+  name: string
+  vendor?: string | null
+  model?: string | null
+  ip_address?: string | null
+  port: number
+  protocol: string
+  status: string
+  last_seen_at?: string | null
+  notes?: string | null
+}
+
+export interface RfidAntenna {
+  id: string
+  reader_id: string
+  antenna_number: number
+  name: string
+  location_id?: string | null
+  zone_id?: string | null
+  transmit_power_dbm?: number | null
+  is_active: boolean
+}
+
+export interface RfidTagRead {
+  id: string
+  warehouse_id: string
+  reader_id: string
+  antenna_id?: string | null
+  epc_hex: string
+  epc_scheme: string
+  gtin?: string | null
+  sscc?: string | null
+  serial?: number | null
+  product_id?: string | null
+  rssi_dbm?: number | null
+  read_at: string
+  processed: boolean
+  process_notes?: string | null
+}
+
+export interface RfidDashboardMetrics {
+  readers_by_status: Record<string, number>
+  reads_today: number
+  unique_epcs_today: number
+  unprocessed_reads: number
+}
+
+export interface ZplLabelResult {
+  zpl: string
+  epc_hex?: string | null
+  epc_uri?: string | null
+}
+
+// ── Asistente IA agéntico (Fase 5) ─────────────────────
+export interface ToolCallTrace {
+  tool: string
+  args: Record<string, unknown>
+  result: Record<string, unknown>
+}
+
+export interface ChatResponse {
+  conversation_id: string
+  response: string
+  sources: ToolCallTrace[]
+  latency_ms: number
+  tokens_used: number
+}
+
+export interface AIConversation {
+  id: string
+  title?: string | null
+  context_type?: string | null
+  message_count: number
+  total_tokens: number
+  created_at: string
+  updated_at: string
+}
+
+export interface AIConversationMessage {
+  id: string
+  role: string
+  content: string
+  sources: ToolCallTrace[]
+  tokens_used: number
+  latency_ms?: number | null
+  created_at: string
+}
+
+export interface AIConversationDetail extends AIConversation {
+  messages: AIConversationMessage[]
 }

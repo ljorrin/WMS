@@ -60,6 +60,55 @@ class CompanyLite(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CompanyResponse(BaseModel):
+    id: uuid.UUID
+    name: str
+    legal_name: Optional[str]
+    ruc: Optional[str]
+    dv: Optional[str]
+    email: Optional[str]
+    phone: Optional[str]
+    address: Optional[str]
+    city: Optional[str]
+    country: str
+    gs1_company_prefix: Optional[str]
+    gln: Optional[str]
+    logo_url: Optional[str]
+    model_config = {"from_attributes": True}
+
+
+class CompanyUpdate(BaseModel):
+    name: Optional[str] = None
+    legal_name: Optional[str] = None
+    ruc: Optional[str] = None
+    dv: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    gs1_company_prefix: Optional[str] = None
+    gln: Optional[str] = None
+    logo_url: Optional[str] = None
+    model_config = {"extra": "ignore"}
+
+
+class CompanyCreate(BaseModel):
+    name: str
+    legal_name: Optional[str] = None
+    ruc: Optional[str] = None
+    dv: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    city: Optional[str] = None
+    country: str = "PA"
+    gs1_company_prefix: Optional[str] = None
+    gln: Optional[str] = None
+    logo_url: Optional[str] = None
+    model_config = {"extra": "ignore"}
+
+
 class WarehouseResponse(BaseModel):
     id: uuid.UUID
     code: str
@@ -119,15 +168,47 @@ async def list_warehouses(
     return WarehouseListResponse(items=items, total=total, page=pagination.page, page_size=pagination.page_size)
 
 
-@router.get("/companies", response_model=list[CompanyLite])
+@router.get("/companies", response_model=list[CompanyResponse])
 async def list_companies(
     db: DBDep,
     current_user: CurrentUserDep,
-) -> list[CompanyLite]:
-    """Empresas del tenant actual (para el selector de empresa al crear una bodega)."""
+) -> list[CompanyResponse]:
+    """Empresas del tenant actual (para el selector de empresa y configuracion)."""
     stmt = select(Company).where(Company.tenant_id == current_user.tenant_id).order_by(Company.name)
     items = (await db.execute(stmt)).scalars().all()
     return items
+
+@router.post("/companies", response_model=CompanyResponse, status_code=status.HTTP_201_CREATED)
+async def create_company(
+    body: CompanyCreate,
+    db: DBDep,
+    superadmin: SuperAdminDep,
+) -> CompanyResponse:
+    company = Company(
+        tenant_id=superadmin.tenant_id,
+        **body.model_dump()
+    )
+    db.add(company)
+    await db.commit()
+    await db.refresh(company)
+    return company
+
+@router.put("/companies/{company_id}", response_model=CompanyResponse)
+async def update_company(
+    company_id: uuid.UUID,
+    body: CompanyUpdate,
+    db: DBDep,
+    superadmin: SuperAdminDep,
+) -> CompanyResponse:
+    company = await db.get(Company, company_id)
+    if not company or company.tenant_id != superadmin.tenant_id:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    
+    for k, v in body.model_dump(exclude_unset=True).items():
+        setattr(company, k, v)
+    await db.commit()
+    await db.refresh(company)
+    return company
 
 
 @router.post("", response_model=WarehouseResponse, status_code=status.HTTP_201_CREATED)

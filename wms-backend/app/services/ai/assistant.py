@@ -1,24 +1,28 @@
 """
-WMS Panama — Asistente WMS con LangChain RAG
-==============================================
-Asistente conversacional especializado en operaciones de almacén.
-Usa Retrieval-Augmented Generation (RAG) para responder preguntas
-sobre el estado del sistema, OCs, SOs, inventario y KPIs.
+WMS Panama — Asistente WMS agéntico (tool-calling) — Fase 5
+==============================================================
+Asistente conversacional especializado en operaciones de almacén, con
+capacidad de EJECUTAR acciones reales (no solo responder preguntas) via
+tool-calling del LLM: el modelo decide qué herramienta(s) invocar
+(app/services/ai/tools.py), estas ejecutan contra los servicios/repos
+reales del WMS, y el resultado se realimenta al modelo hasta producir una
+respuesta final. Mantiene memoria conversacional real (turnos previos de
+la misma conversación se pasan al LLM).
 
-Arquitectura:
-  ┌──────────┐    ┌─────────────┐    ┌──────────────┐
-  │  Usuario │───▶│  LangChain  │───▶│ VectorStore  │
-  │ pregunta │    │  RetrievalQA│    │ (Meilisearch │
-  └──────────┘    └──────┬──────┘    │  / pgvector) │
-                         │           └──────────────┘
-                         ▼
-                  ┌──────────────┐
-                  │  LLM (OpenAI │
-                  │  / Ollama)   │
-                  └──────────────┘
+Arquitectura del loop agéntico:
+  Usuario ──▶ LLM (bind_tools) ──▶ ¿tool_calls? ──sí──▶ ejecutar tool real
+                  ▲                                          │
+                  └──────────── ToolMessage(resultado) ◀──────┘
+                  │
+                  no
+                  ▼
+             Respuesta final
 
-Fallback: si LangChain no está disponible, usa un sistema
-de respuestas basado en templates + consultas directas a la BD.
+Fallback SIN LLM configurado (sin OPENAI_API_KEY): motor de respuestas por
+templates + consultas de solo lectura a la BD — NO ejecuta acciones (el
+tool-calling requiere que un LLM interprete la intención y extraiga
+argumentos como UUIDs; sin LLM no hay forma confiable de hacerlo desde
+texto libre).
 """
 
 from __future__ import annotations
@@ -32,24 +36,33 @@ import structlog
 
 log = structlog.get_logger(__name__)
 
+MAX_TOOL_ITERATIONS = 4
+MAX_HISTORY_MESSAGES = 20
+
 # ── System prompt del asistente ────────────────────────────────────────────
 
 SYSTEM_PROMPT = """Eres el Asistente Inteligente del WMS Panama.
 Tu misión es ayudar a los operadores, supervisores y gerentes a
-gestionar eficientemente el almacén respondiendo preguntas sobre:
-  - Estado del inventario (stock, ubicaciones, lotes)
-  - Órdenes de Compra y recepciones (GRNs)
-  - Órdenes de Venta, picking y envíos
-  - KPIs y alertas del sistema
-  - Procedimientos y mejores prácticas WMS
+gestionar eficientemente el almacén. Tienes acceso a herramientas (tools)
+que consultan y MODIFICAN datos reales del sistema — úsalas siempre que
+necesites datos actuales o el usuario te pida ejecutar una acción (asignar
+una tarea, resolver una anomalía o alerta, etc.). No inventes resultados:
+si una acción requiere una herramienta, invócala.
 
 Reglas:
   1. Responde siempre en español (Panamá).
   2. Sé conciso y específico. Evita respuestas genéricas.
-  3. Si no tienes datos concretos, dilo claramente.
-  4. Para datos financieros usa USD como moneda predeterminada.
-  5. Nunca inventes números que no hayas recuperado de los datos.
-  6. Si detectas una situación urgente (stockout, vencimiento), dilo explícitamente.
+  3. Antes de responder con datos (stock, KPIs, alertas), invoca la
+     herramienta correspondiente — no asumas ni inventes números.
+  4. Si una herramienta devuelve "ok": false (p. ej. permiso denegado o
+     dato no encontrado), informa el problema claramente al usuario en
+     vez de inventar una respuesta alternativa.
+  5. Antes de ejecutar una acción irreversible o de asignación (asignar
+     tarea, resolver anomalía/alerta), confirma que entendiste bien qué
+     pidió el usuario; si falta un dato requerido (p. ej. a qué operario
+     asignar), pregúntalo en vez de adivinar.
+  6. Para datos financieros usa USD como moneda predeterminada.
+  7. Si detectas una situación urgente (stockout, vencimiento), dilo explícitamente.
 """
 
 # ── Intents detectados sin LLM ─────────────────────────────────────────────
@@ -72,10 +85,15 @@ class WMSAssistant:
     las respuestas con datos en tiempo real de la BD.
     """
 
-    def __init__(self, db, tenant_id: UUID, user_id: UUID):
+    def __init__(
+        self, db, tenant_id: UUID, user_id: UUID,
+        permissions: frozenset[str] = frozenset(), is_superadmin: bool = False,
+    ):
         self.db = db
         self.tenant_id = tenant_id
         self.user_id = user_id
+        self.permissions = permissions
+        self.is_superadmin = is_superadmin
 
     # ── API pública ───────────────────────────────────────────────────────────
 
@@ -95,6 +113,9 @@ class WMSAssistant:
             conversation_id, context_type, context_id
         )
 
+        # Cargar historial ANTES de guardar el mensaje nuevo (memoria conversacional real)
+        history = await self._load_history(conv.id)
+
         # Guardar mensaje del usuario
         await self._save_message(conv.id, "user", message)
 
@@ -103,6 +124,7 @@ class WMSAssistant:
         response_text, sources, tokens = await self._generate_response(
             message=message,
             conversation=conv,
+            history=history,
             context_type=context_type,
             context_id=context_id,
         )
@@ -147,10 +169,13 @@ class WMSAssistant:
 
     async def get_conversation(self, conversation_id: UUID):
         from sqlalchemy import select, and_
+        from sqlalchemy.orm import selectinload
         from app.models.ai import AIConversation
 
         result = await self.db.execute(
-            select(AIConversation).where(
+            select(AIConversation)
+            .options(selectinload(AIConversation.messages))
+            .where(
                 and_(
                     AIConversation.id == conversation_id,
                     AIConversation.tenant_id == self.tenant_id,
@@ -166,56 +191,93 @@ class WMSAssistant:
         self,
         message: str,
         conversation,
+        history: list[dict],
         context_type: Optional[str],
         context_id: Optional[UUID],
     ) -> tuple[str, list, int]:
         """
-        Intenta usar LangChain RAG; si no está disponible,
-        usa el motor de templates + consultas directas.
+        Intenta usar el LLM agéntico (tool-calling); si no está disponible
+        o no hay API key configurada, usa el motor de templates + consultas
+        directas (solo lectura, sin ejecución de acciones).
         """
-        # Enriquecer con contexto de BD
-        context_data = await self._gather_context(message, context_type, context_id)
+        from app.core.config import settings
+
+        if not getattr(settings, "OPENAI_API_KEY", ""):
+            log.info("assistant.no_api_key", fallback="template_engine")
+            context_data = await self._gather_context(message, context_type, context_id)
+            return self._template_response(message, context_data), [], 0
 
         try:
-            return await self._langchain_response(message, context_data)
+            return await self._agentic_response(message, history)
         except ImportError:
             log.info("assistant.langchain_not_installed", fallback="template_engine")
+            context_data = await self._gather_context(message, context_type, context_id)
             return self._template_response(message, context_data), [], 0
         except Exception as e:
-            log.warning("assistant.langchain_error", error=str(e))
+            log.warning("assistant.agentic_error", error=str(e))
+            context_data = await self._gather_context(message, context_type, context_id)
             return self._template_response(message, context_data), [], 0
 
-    async def _langchain_response(
-        self, message: str, context_data: dict
+    async def _agentic_response(
+        self, message: str, history: list[dict],
     ) -> tuple[str, list, int]:
-        """Usa LangChain con OpenAI o Ollama."""
-        from langchain.chat_models import ChatOpenAI
-        from langchain.schema import HumanMessage, SystemMessage, AIMessage
+        """
+        Loop agéntico real: el LLM decide qué herramienta(s) invocar
+        (app/services/ai/tools.py), estas ejecutan contra la BD real, y el
+        resultado se realimenta al modelo hasta que produce una respuesta
+        final (sin más tool_calls) o se alcanza MAX_TOOL_ITERATIONS.
+        """
+        from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+        from langchain_openai import ChatOpenAI
+
         from app.core.config import settings
+        from app.services.ai import tools as ai_tools
 
         llm = ChatOpenAI(
             model_name=getattr(settings, "OPENAI_MODEL", "gpt-4o-mini"),
-            temperature=0.2,
+            temperature=0.1,
             openai_api_key=getattr(settings, "OPENAI_API_KEY", ""),
             max_tokens=800,
         )
+        llm_with_tools = llm.bind_tools(ai_tools.to_openai_tool_schemas())
 
-        context_str = json.dumps(context_data, ensure_ascii=False, indent=2)
-        system_with_context = (
-            SYSTEM_PROMPT
-            + f"\n\nDatos actuales del sistema:\n```json\n{context_str}\n```"
+        messages: list = [SystemMessage(content=SYSTEM_PROMPT)]
+        for turn in history:
+            if turn["role"] == "user":
+                messages.append(HumanMessage(content=turn["content"]))
+            elif turn["role"] == "assistant":
+                messages.append(AIMessage(content=turn["content"]))
+        messages.append(HumanMessage(content=message))
+
+        ctx = ai_tools.ToolContext(
+            db=self.db, tenant_id=self.tenant_id, user_id=self.user_id,
+            permissions=self.permissions, is_superadmin=self.is_superadmin,
         )
+        total_tokens = 0
+        tool_trace: list = []
 
-        messages = [
-            SystemMessage(content=system_with_context),
-            HumanMessage(content=message),
-        ]
+        for _ in range(MAX_TOOL_ITERATIONS):
+            response = await llm_with_tools.ainvoke(messages)
+            usage = getattr(response, "usage_metadata", None) or {}
+            total_tokens += usage.get("total_tokens", 0)
 
-        response = await llm.agenerate([messages])
-        text = response.generations[0][0].text
-        tokens = response.llm_output.get("token_usage", {}).get("total_tokens", 0)
+            if not response.tool_calls:
+                return response.content, tool_trace, total_tokens
 
-        return text, [], tokens
+            messages.append(response)
+            for call in response.tool_calls:
+                result = await ai_tools.execute_tool(call["name"], call["args"], ctx)
+                tool_trace.append({"tool": call["name"], "args": call["args"], "result": result})
+                messages.append(ToolMessage(
+                    content=json.dumps(result, ensure_ascii=False, default=str),
+                    tool_call_id=call["id"],
+                ))
+
+        return (
+            "No pude completar tu solicitud tras varios pasos — intenta reformularla "
+            "o hacerla más específica.",
+            tool_trace, total_tokens,
+        )
 
     def _template_response(self, message: str, context_data: dict) -> str:
         """
@@ -429,6 +491,22 @@ class WMSAssistant:
             }
         except Exception:
             return {}
+
+    # ── Memoria conversacional ─────────────────────────────────────────────────
+
+    async def _load_history(self, conversation_id: UUID) -> list[dict]:
+        """Últimos MAX_HISTORY_MESSAGES turnos de la conversación, orden cronológico."""
+        from sqlalchemy import select
+
+        from app.models.ai import AIConversationMessage
+
+        rows = (await self.db.execute(
+            select(AIConversationMessage.role, AIConversationMessage.content)
+            .where(AIConversationMessage.conversation_id == conversation_id)
+            .order_by(AIConversationMessage.created_at.desc())
+            .limit(MAX_HISTORY_MESSAGES)
+        )).all()
+        return [{"role": r.value if hasattr(r, "value") else r, "content": c} for r, c in reversed(rows)]
 
     # ── Persistencia de conversación ──────────────────────────────────────────
 

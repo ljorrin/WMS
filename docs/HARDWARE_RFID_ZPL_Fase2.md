@@ -39,11 +39,35 @@ el equipo físico.
 - Probar el ZPL generado contra una impresora Zebra real (o el emulador
   "Labelary") — la sintaxis de `^BC`/`^RFW` está verificada contra la
   documentación pública de Zebra, pero no contra un renderizado real.
-- Un cliente/gateway LLRP real conectado a un reader físico.
+- Ejecutar `scripts/rfid_llrp_gateway.py` contra el reader físico real (ver
+  abajo) — el script y sus defaults ya están listos, solo falta correrlo con
+  el hardware conectado.
 - Calibración de potencia de antena (`transmit_power_dbm`) y lógica de
   deduplicación de lecturas repetidas (un tag cruzando un portal genera
   decenas de `RfidTagRead` por segundo; hoy se persisten todas — falta una
   ventana de deduplicación si el volumen en producción lo amerita).
+
+## Gateway LLRP real — listo para correr en esta máquina
+
+Hardware confirmado: reader Motorola/Zebra **FX9500** (firmware 1.5.4.348,
+MAC `C4:7D:CC:00:90:13`) en `169.254.1.1:5084`, 4 antenas, conectado a un
+switch TP-Link TL-SF1008D sin WiFi.
+
+`scripts/rfid_llrp_gateway.py` NO requiere una segunda máquina — solo
+requiere que la máquina donde corre tenga conectividad de red (Ethernet) al
+switch del reader. Sus defaults ya coinciden con el hardware real (reader
+code `READER-DOCK-01`, bodega `WH-01`, IP `169.254.1.1:5084`, antenas
+`1,2,3,4`, `--api-host http://localhost:8000`), así que una vez que esta
+máquina esté conectada físicamente al switch (p. ej. vía adaptador
+USB-Ethernet), correrlo es:
+```
+pip install -r requirements-rfid-gateway.txt
+python rfid_llrp_gateway.py
+```
+Solo hace falta pasar `--api-host` distinto (LAN o túnel) si el backend del
+WMS corre en una máquina que el reader no puede alcanzar directamente.
+**Aún no ejecutado contra el hardware real** — pendiente de que la máquina
+se conecte físicamente al switch del reader.
 
 ## Bug real encontrado y corregido
 

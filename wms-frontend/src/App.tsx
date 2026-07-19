@@ -32,6 +32,10 @@ import { MasterDataPage } from '@/pages/master/MasterDataPage'
 // Labor & Slotting
 import { LaborPage } from '@/pages/labor/LaborPage'
 import { SlottingPage } from '@/pages/slotting/SlottingPage'
+// Hardware RFID
+import { RfidTestPage } from '@/pages/hardware/RfidTestPage'
+// Asistente IA
+import { AssistantPage } from '@/pages/ai/AssistantPage'
 // Settings
 import { SettingsPage } from '@/pages/settings/SettingsPage'
 
@@ -109,6 +113,12 @@ export default function App() {
             {/* Labor & Slotting */}
             <Route path="labor" element={<LaborPage />} />
             <Route path="slotting" element={<SlottingPage />} />
+
+            {/* Hardware RFID */}
+            <Route path="hardware/rfid" element={<RfidTestPage />} />
+
+            {/* Asistente IA */}
+            <Route path="ai/assistant" element={<AssistantPage />} />
 
             {/* Settings */}
             <Route path="settings" element={<SettingsPage />} />

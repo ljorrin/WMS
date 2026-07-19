@@ -64,6 +64,17 @@ class RfidService:
         await self.db.refresh(reader)
         return reader
 
+    async def update_reader(
+        self, tenant_id: uuid.UUID, reader_id: uuid.UUID, data: dict,
+    ) -> RfidReader:
+        reader = await self._get_reader(tenant_id, reader_id)
+        for field, value in data.items():
+            if value is not None:
+                setattr(reader, field, value)
+        await self.db.commit()
+        await self.db.refresh(reader)
+        return reader
+
     async def list_readers(
         self, tenant_id: uuid.UUID, warehouse_id: Optional[uuid.UUID] = None
     ) -> list[RfidReader]:
@@ -222,6 +233,19 @@ class RfidService:
         )).scalars().all()
         return list(rows), total
 
+    async def clear_tag_reads(
+        self, tenant_id: uuid.UUID, warehouse_id: Optional[uuid.UUID] = None,
+    ) -> int:
+        """Borra (definitivamente) el historial de lecturas — útil para limpiar datos de prueba."""
+        from sqlalchemy import delete
+
+        conditions = [RfidTagRead.tenant_id == tenant_id]
+        if warehouse_id:
+            conditions.append(RfidTagRead.warehouse_id == warehouse_id)
+        result = await self.db.execute(delete(RfidTagRead).where(and_(*conditions)))
+        await self.db.commit()
+        return result.rowcount or 0
+
     # ══════════════════════════════════════════════════════════════════════════
     # DASHBOARD
     # ══════════════════════════════════════════════════════════════════════════
@@ -249,6 +273,13 @@ class RfidService:
                 *read_conditions, RfidTagRead.read_at >= since_24h,
             ))
         )).scalar_one()
+        # Un mismo tag suele leerse muchas veces (varias antenas o pasadas
+        # repetidas) — esto cuenta EPCs (códigos) distintos, no lecturas crudas.
+        unique_epcs_today = (await self.db.execute(
+            select(func.count(func.distinct(RfidTagRead.epc_hex))).where(and_(
+                *read_conditions, RfidTagRead.read_at >= since_24h,
+            ))
+        )).scalar_one()
         unprocessed = (await self.db.execute(
             select(func.count(RfidTagRead.id)).where(and_(
                 *read_conditions, RfidTagRead.processed.is_(False),
@@ -258,5 +289,6 @@ class RfidService:
         return {
             "readers_by_status": readers_by_status,
             "reads_today": reads_today,
+            "unique_epcs_today": unique_epcs_today,
             "unprocessed_reads": unprocessed,
         }

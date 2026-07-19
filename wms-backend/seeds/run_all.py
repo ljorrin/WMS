@@ -70,6 +70,7 @@ SYSTEM_PERMISSIONS = [
     ("outbound:shipping:manage", "Gestionar Envíos y Despacho",  "outbound"),
     ("outbound:rma:create",      "Crear/Ver Devolución (RMA)",   "outbound"),
     ("outbound:rma:manage",      "Gestionar Devolución (RMA)",   "outbound"),
+    ("outbound:order:read",      "Ver Cola de Streaming/Waveless","outbound"),
 
     # ── Master Data ──
     ("master:product:read",      "Ver Productos",            "master"),
@@ -131,13 +132,14 @@ SYSTEM_ROLES = {
             "inbound:putaway:manage", "inbound:rtv:create", "inbound:rtv:manage",
             "outbound:so:read", "outbound:so:create", "outbound:so:confirm", "outbound:so:cancel",
             "outbound:wave:create", "outbound:wave:manage",
-            "outbound:picking:manage", "outbound:picking:execute",
+            "outbound:picking:manage", "outbound:picking:execute", "outbound:order:read",
             "outbound:packing:manage", "outbound:shipping:manage",
             "outbound:rma:create", "outbound:rma:manage",
             "master:product:read", "admin:audit:read", "admin:reports:export",
             "labor:read", "labor:standard:manage", "labor:task:manage", "labor:task:execute",
             "slotting:read", "slotting:run", "slotting:manage",
             "hardware:read", "hardware:manage",
+            "ai:assistant:use", "ai:anomaly:manage", "ai:forecast:create",
         ],
     },
     "Operador de Bodega": {
@@ -146,7 +148,7 @@ SYSTEM_ROLES = {
             "inventory:read",
             "inbound:po:read", "inbound:grn:create", "inbound:grn:read", "inbound:putaway:manage",
             "outbound:so:read", "outbound:wave:create",
-            "outbound:picking:manage", "outbound:picking:execute", "outbound:packing:manage",
+            "outbound:picking:manage", "outbound:picking:execute", "outbound:order:read", "outbound:packing:manage",
             "master:product:read",
             "labor:read", "labor:task:execute",
             "hardware:read",

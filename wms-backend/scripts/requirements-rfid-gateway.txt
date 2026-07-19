@@ -1,0 +1,7 @@
+# Dependencias del gateway LLRP (scripts/rfid_llrp_gateway.py) — instalar en la
+# máquina que tiene conectividad de red al reader físico (puede ser esta misma
+# máquina de desarrollo si se conecta al switch del reader; no son dependencias
+# del backend/Docker).
+# Uso: pip install -r requirements-rfid-gateway.txt
+sllurp==3.0.5
+httpx==0.27.2

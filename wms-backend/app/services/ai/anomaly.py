@@ -122,7 +122,7 @@ class AnomalyDetector:
         is_false_positive: bool,
         resolution_notes: str,
     ) -> None:
-        from sqlalchemy import update
+        from sqlalchemy import and_, update
         from app.models.ai import AnomalyEvent
 
         await self.db.execute(

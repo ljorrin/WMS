@@ -256,8 +256,15 @@ export function PackingPage() {
             <Input label="Volumen (m³)" type="number" value={volume}
               onChange={e => setVolume(e.target.value)} placeholder="Opcional" />
           </div>
-          <Input label="SSCC del bulto" value={sscc}
-            onChange={e => setSscc(e.target.value)} placeholder="Opcional — código de contenedor" />
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-medium text-gray-700">SSCC del bulto</label>
+            <input 
+              disabled 
+              className="h-9 rounded-lg border border-gray-300 bg-gray-50 px-3 text-sm text-gray-500 cursor-not-allowed" 
+              value="Generado automáticamente por el sistema" 
+            />
+            <p className="text-xs text-gray-400">El SSCC se generará con el prefijo GS1 de la empresa.</p>
+          </div>
         </div>
       </Modal>
     </div>

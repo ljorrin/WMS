@@ -159,3 +159,16 @@ class ConversationResponse(BaseModel):
 class ConversationListResponse(BaseModel):
     items: List[ConversationResponse]
     total: int; page: int; page_size: int
+
+class ConversationMessageResponse(BaseModel):
+    id: UUID
+    role: str
+    content: str
+    sources: List[Any] = []
+    tokens_used: int
+    latency_ms: Optional[int]
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+class ConversationDetailResponse(ConversationResponse):
+    messages: List[ConversationMessageResponse] = []
