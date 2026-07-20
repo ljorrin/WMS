@@ -541,4 +541,15 @@ export const aiApi = {
 
   getConversation: (id: string) =>
     api.get<AIConversationDetail>(`/ai/assistant/conversations/${id}`).then(r => r.data),
+
+  transcribe: (audio: Blob) => {
+    const form = new FormData()
+    form.append('audio', audio, 'audio.webm')
+    return api.post<{ text: string }>('/ai/assistant/transcribe', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data)
+  },
+
+  speak: (text: string) =>
+    api.post('/ai/assistant/speak', { text }, { responseType: 'blob' }).then(r => r.data as Blob),
 }

@@ -28,6 +28,7 @@ texto libre).
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 from uuid import UUID, uuid4
@@ -38,6 +39,19 @@ log = structlog.get_logger(__name__)
 
 MAX_TOOL_ITERATIONS = 4
 MAX_HISTORY_MESSAGES = 20
+
+_MD_CHARS_RE = re.compile(r"[*_`#~]")
+_EMOJI_RE = re.compile(
+    "[\U0001F300-\U0001FAFF\U00002600-\U000027BF\U0001F1E6-\U0001F1FF]+",
+    flags=re.UNICODE,
+)
+
+
+def _clean_text_for_speech(text: str) -> str:
+    """Quita markdown/emojis antes de sintetizar voz — si no, el TTS los lee literal."""
+    text = _EMOJI_RE.sub("", text)
+    text = _MD_CHARS_RE.sub("", text)
+    return re.sub(r"\s+", " ", text).strip()
 
 # ── System prompt del asistente ────────────────────────────────────────────
 
@@ -185,6 +199,47 @@ class WMSAssistant:
         )
         return result.scalar_one_or_none()
 
+    # ── Transcripción de voz (dictado) ─────────────────────────────────────────
+
+    async def transcribe_audio(self, audio_bytes: bytes, filename: str, content_type: str) -> str:
+        """Transcribe audio a texto en español via Whisper (OpenAI). Requiere OPENAI_API_KEY."""
+        from app.core.config import settings
+
+        if not getattr(settings, "OPENAI_API_KEY", ""):
+            raise ValueError("El dictado por voz requiere OPENAI_API_KEY configurada en el servidor.")
+
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        transcript = await client.audio.transcriptions.create(
+            model="whisper-1",
+            file=(filename or "audio.webm", audio_bytes, content_type or "audio/webm"),
+            language="es",
+        )
+        return transcript.text.strip()
+
+    async def synthesize_speech(self, text: str) -> bytes:
+        """Sintetiza texto a voz (mp3) via TTS (OpenAI). Requiere OPENAI_API_KEY."""
+        from app.core.config import settings
+
+        if not getattr(settings, "OPENAI_API_KEY", ""):
+            raise ValueError("La respuesta por voz requiere OPENAI_API_KEY configurada en el servidor.")
+
+        clean = _clean_text_for_speech(text)
+        if not clean:
+            raise ValueError("No hay texto para sintetizar.")
+
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+        response = await client.audio.speech.create(
+            model="tts-1",
+            voice="alloy",
+            input=clean,
+            response_format="mp3",
+        )
+        return await response.aread()
+
     # ── Generación de respuesta ───────────────────────────────────────────────
 
     async def _generate_response(
@@ -267,7 +322,11 @@ class WMSAssistant:
             messages.append(response)
             for call in response.tool_calls:
                 result = await ai_tools.execute_tool(call["name"], call["args"], ctx)
-                tool_trace.append({"tool": call["name"], "args": call["args"], "result": result})
+                # Normalizar tipos no serializables (Decimal, UUID, datetime) antes de
+                # persistir en la columna JSON `sources` — el JSON encoder por defecto
+                # de SQLAlchemy no sabe convertirlos.
+                safe_result = json.loads(json.dumps(result, ensure_ascii=False, default=str))
+                tool_trace.append({"tool": call["name"], "args": call["args"], "result": safe_result})
                 messages.append(ToolMessage(
                     content=json.dumps(result, ensure_ascii=False, default=str),
                     tool_call_id=call["id"],

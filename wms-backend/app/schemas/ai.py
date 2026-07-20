@@ -172,3 +172,9 @@ class ConversationMessageResponse(BaseModel):
 
 class ConversationDetailResponse(ConversationResponse):
     messages: List[ConversationMessageResponse] = []
+
+class TranscribeResponse(BaseModel):
+    text: str
+
+class SpeakRequest(BaseModel):
+    text: str = Field(..., min_length=1, max_length=4000)

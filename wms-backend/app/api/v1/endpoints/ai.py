@@ -12,7 +12,7 @@ from fastapi import Response
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
 from app.core.dependencies import CurrentUserDep, DBDep, PaginationDep, TokenDep, require_permission
 from app.schemas.ai import (
@@ -20,7 +20,7 @@ from app.schemas.ai import (
     AlertResolveRequest, ChatRequest, ChatResponse,
     ConversationDetailResponse, ConversationListResponse, ConversationResponse,
     ForecastListResponse, ForecastRequest, ForecastResponse,
-    RouteOptimizeRequest, RouteOptimizationResponse,
+    RouteOptimizeRequest, RouteOptimizationResponse, SpeakRequest, TranscribeResponse,
 )
 from app.services.ai.forecasting import ForecastingService
 from app.services.ai.optimizer import PickingRouteOptimizer
@@ -328,6 +328,49 @@ async def chat(
     )
     await db.commit()
     return result
+
+
+@router.post(
+    "/assistant/transcribe",
+    response_model=TranscribeResponse,
+    summary="Transcribir audio a texto (Whisper) para dictado por voz",
+    dependencies=[Depends(require_permission("ai:assistant:use"))],
+)
+async def transcribe_audio(
+    db: DBDep,
+    current_user: CurrentUserDep,
+    audio: UploadFile = File(...),
+):
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=422, detail="Archivo de audio vacío.")
+    if len(audio_bytes) > 25 * 1024 * 1024:
+        raise HTTPException(status_code=422, detail="El audio supera el límite de 25MB.")
+
+    svc = _assistant_svc(db, current_user)
+    try:
+        text = await svc.transcribe_audio(audio_bytes, audio.filename or "audio.webm", audio.content_type)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return TranscribeResponse(text=text)
+
+
+@router.post(
+    "/assistant/speak",
+    summary="Sintetizar voz (TTS) para una respuesta del asistente",
+    dependencies=[Depends(require_permission("ai:assistant:use"))],
+)
+async def speak(
+    payload: SpeakRequest,
+    db: DBDep,
+    current_user: CurrentUserDep,
+):
+    svc = _assistant_svc(db, current_user)
+    try:
+        audio_bytes = await svc.synthesize_speech(payload.text)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    return Response(content=audio_bytes, media_type="audio/mpeg")
 
 
 @router.get(
