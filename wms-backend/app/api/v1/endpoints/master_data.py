@@ -64,6 +64,22 @@ class CustomerLite(BaseModel):
     is_active: bool
     contact_email: Optional[str] = None
     delivery_city: Optional[str] = None
+    legal_name: Optional[str] = None
+    ruc: Optional[str] = None
+    contact_name: Optional[str] = None
+    contact_phone: Optional[str] = None
+    delivery_address: Optional[str] = None
+    delivery_province: Optional[str] = None
+    delivery_country: Optional[str] = None
+    delivery_instructions: Optional[str] = None
+    delivery_latitude: Optional[Decimal] = None
+    delivery_longitude: Optional[Decimal] = None
+    receiving_hours_from: Optional[str] = None
+    receiving_hours_to: Optional[str] = None
+    service_time_min: Optional[int] = None
+    gln: Optional[str] = None
+    sla_lead_time_hours: Optional[int] = None
+    payment_terms_days: Optional[int] = None
     model_config = {"from_attributes": True}
 
 
@@ -376,6 +392,13 @@ class CustomerCreate(BaseModel):
     delivery_city: Optional[str] = None
     delivery_province: Optional[str] = None
     delivery_country: str = Field("PA", max_length=2)
+    delivery_instructions: Optional[str] = None
+    delivery_latitude: Optional[Decimal] = Field(None, ge=-90, le=90)
+    delivery_longitude: Optional[Decimal] = Field(None, ge=-180, le=180)
+    receiving_hours_from: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    receiving_hours_to: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    service_time_min: Optional[int] = Field(None, ge=0, le=600)
+    gln: Optional[str] = Field(None, max_length=13)
     sla_lead_time_hours: Optional[int] = None
     payment_terms_days: Optional[int] = None
     model_config = {"extra": "ignore"}
@@ -393,6 +416,13 @@ class CustomerUpdate(BaseModel):
     delivery_address: Optional[str] = None
     delivery_city: Optional[str] = None
     delivery_province: Optional[str] = None
+    delivery_instructions: Optional[str] = None
+    delivery_latitude: Optional[Decimal] = Field(None, ge=-90, le=90)
+    delivery_longitude: Optional[Decimal] = Field(None, ge=-180, le=180)
+    receiving_hours_from: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    receiving_hours_to: Optional[str] = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    service_time_min: Optional[int] = Field(None, ge=0, le=600)
+    gln: Optional[str] = Field(None, max_length=13)
     sla_lead_time_hours: Optional[int] = None
     payment_terms_days: Optional[int] = None
     model_config = {"extra": "ignore"}

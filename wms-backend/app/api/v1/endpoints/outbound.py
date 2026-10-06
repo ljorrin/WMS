@@ -152,6 +152,30 @@ async def get_sales_order(so_id: UUID, db: DBDep, current_user: CurrentUserDep):
     return so
 
 
+@router.patch(
+    "/orders/{so_id}",
+    response_model=SalesOrderResponse,
+    summary="Editar datos de entrega de la SO (dirección, coordenadas, ventana)",
+    dependencies=[Depends(require_permission("outbound:so:create"))],
+)
+async def update_sales_order(
+    so_id: UUID,
+    payload: SalesOrderUpdate,
+    db: DBDep,
+    current_user: CurrentUserDep,
+):
+    svc = _svc(db, current_user)
+    try:
+        await svc.update_sales_order(so_id, payload.model_dump(exclude_unset=True))
+        await db.commit()
+    except OrderStateError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except OutboundServiceError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    db.expire_all()
+    return await svc.so_repo.get_by_id(so_id)
+
+
 @router.post(
     "/orders/{so_id}/confirm",
     status_code=status.HTTP_204_NO_CONTENT, response_class=Response, response_model=None,

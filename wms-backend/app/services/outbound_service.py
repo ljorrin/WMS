@@ -18,6 +18,7 @@ Reglas de negocio críticas:
 from __future__ import annotations
 
 from decimal import Decimal
+from enum import Enum
 from typing import List, Optional
 from uuid import UUID
 
@@ -53,6 +54,45 @@ from app.services.inventory_service import InsufficientStockError, InventoryServ
 log = structlog.get_logger(__name__)
 
 
+def _plain(data: dict) -> dict:
+    """Enums de schema (str, Enum) → su valor, para columnas String."""
+    return {k: (v.value if isinstance(v, Enum) else v) for k, v in data.items()}
+
+
+def delivery_defaults_from_customer(customer) -> dict:
+    """Datos de entrega de la ficha del cliente con los nombres de campo de la SO."""
+    return {
+        "ship_to_name": customer.name,
+        "ship_to_address": customer.delivery_address,
+        "ship_to_city": customer.delivery_city,
+        "ship_to_province": customer.delivery_province,
+        "ship_to_country": customer.delivery_country,
+        "ship_to_phone": customer.contact_phone,
+        "ship_to_contact_name": customer.contact_name,
+        "ship_to_email": customer.contact_email,
+        "ship_to_latitude": customer.delivery_latitude,
+        "ship_to_longitude": customer.delivery_longitude,
+        "ship_to_gln": customer.gln,
+        "ruc_cliente": customer.ruc,
+        "delivery_instructions": customer.delivery_instructions,
+        "service_time_min": customer.service_time_min,
+    }
+
+
+def shipment_totals_from_packs(packs) -> dict:
+    """Suma bultos, peso y volumen de las tareas de empaque completadas."""
+    if not packs:
+        return {}
+    weight = sum((Decimal(str(p.total_weight_kg)) for p in packs if p.total_weight_kg), Decimal("0"))
+    volume = sum((Decimal(str(p.total_volume_m3)) for p in packs if p.total_volume_m3), Decimal("0"))
+    totals: dict = {"total_boxes": sum(p.box_count or 0 for p in packs)}
+    if weight > 0:
+        totals["total_weight_kg"] = weight
+    if volume > 0:
+        totals["total_volume_m3"] = volume
+    return totals
+
+
 class OutboundService:
     """Servicio Outbound — instanciar por request."""
 
@@ -81,13 +121,32 @@ class OutboundService:
         lines_data: List[dict],
         **kwargs,
     ):
-        """Crear SO en estado DRAFT."""
+        """Crear SO en estado DRAFT.
+
+        Los datos de entrega que no vengan en la SO se completan con la ficha del
+        cliente (dirección, contacto, coordenadas, horario), de modo que la orden
+        llegue al TMS lista para rutear.
+        """
         data = dict(
             warehouse_id=warehouse_id,
             customer_id=customer_id,
             order_date=order_date,
-            **kwargs,
+            **_plain(kwargs),
         )
+        customer = await self.so_repo.get_customer(customer_id)
+        if customer is not None:
+            defaults = delivery_defaults_from_customer(customer)
+            other_place = data.get("ship_to_address") and (
+                str(data["ship_to_address"]).strip().lower()
+                != (customer.delivery_address or "").strip().lower())
+            if other_place:
+                # Entrega en otra dirección: la geolocalización del cliente no aplica
+                for field in ("ship_to_latitude", "ship_to_longitude", "ship_to_gln", "ship_to_city",
+                              "ship_to_province"):
+                    defaults.pop(field)
+            for field, value in defaults.items():
+                if data.get(field) in (None, "") and value not in (None, ""):
+                    data[field] = value
         so = await self.so_repo.create(
             data=data,
             lines_data=lines_data,
@@ -95,6 +154,19 @@ class OutboundService:
         )
         log.info("so.created", so_id=str(so.id), lines=len(lines_data))
         return so
+
+    async def update_sales_order(self, so_id: UUID, data: dict) -> None:
+        """Editar datos de entrega/planificación de una SO aún no despachada."""
+        so = await self.so_repo.get_by_id(so_id)
+        if not so:
+            raise OutboundServiceError(f"SO {so_id} no encontrada.")
+        if so.status in (SOStatus.SHIPPED, SOStatus.DELIVERED, SOStatus.CANCELLED):
+            raise OrderStateError(
+                f"No se puede editar una SO en estado {so.status.value}."
+            )
+        data = _plain(data)
+        if data:
+            await self.so_repo.update_fields(so_id, data)
 
     async def confirm_sales_order(self, so_id: UUID) -> None:
         """
@@ -493,7 +565,12 @@ class OutboundService:
                 f"La SO debe estar PACKED para crear un envío. Estado: {so.status}"
             )
 
-        shipment_data = {"so_id": so_id, **data}
+        # Carga del envío desde el empaque (peso/volumen/bultos) si no viene informada:
+        # el TMS la necesita para asignar vehículo.
+        packs = [p for p in await self.pack_repo.list_by_so(so_id)
+                 if p.status == PackStatus.COMPLETED]
+        totals = shipment_totals_from_packs(packs)
+        shipment_data = {"so_id": so_id, **totals, **{k: v for k, v in data.items() if v is not None}}
         shipment = await self.ship_repo.create(shipment_data, created_by_id=self.user_id)
         await self.so_repo.update_status(so_id, SOStatus.PACKED)  # mantiene hasta despacho
         log.info("shipment.created", shipment_id=str(shipment.id))

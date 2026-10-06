@@ -262,6 +262,22 @@ export interface Customer {
   is_active: boolean
   contact_email?: string | null
   delivery_city?: string | null
+  legal_name?: string | null
+  ruc?: string | null
+  contact_name?: string | null
+  contact_phone?: string | null
+  delivery_address?: string | null
+  delivery_province?: string | null
+  delivery_country?: string | null
+  delivery_instructions?: string | null
+  /** WGS84 — requeridas por el TMS para rutear */
+  delivery_latitude?: number | string | null
+  delivery_longitude?: number | string | null
+  /** HH:MM */
+  receiving_hours_from?: string | null
+  receiving_hours_to?: string | null
+  service_time_min?: number | null
+  gln?: string | null
 }
 
 export interface BoxType {
@@ -302,10 +318,31 @@ export interface SalesOrder {
   total_amount: number
   currency: string
   wave_id?: string
+  service_level?: string | null
+  // Entrega (contrato canónico TMS)
+  ship_to_name?: string | null
+  ship_to_address?: string | null
+  ship_to_city?: string | null
+  ship_to_province?: string | null
+  ship_to_country?: string | null
+  ship_to_phone?: string | null
+  ship_to_contact_name?: string | null
+  ship_to_email?: string | null
+  ship_to_latitude?: number | string | null
+  ship_to_longitude?: number | string | null
+  ship_to_gln?: string | null
+  delivery_window_start?: string | null
+  delivery_window_end?: string | null
+  service_time_min?: number | null
+  cargo_type?: CargoType | null
+  delivery_instructions?: string | null
   lines: SOLine[]
   created_at: string
   updated_at: string
 }
+
+/** Tipo de mercancía del TMS (vacío = se deriva de los productos) */
+export type CargoType = 'consumo_masivo' | 'farmaceutica' | 'repuestos' | 'refrigerada' | 'peligrosa' | 'fragil'
 
 export interface SOLine {
   id: string
@@ -378,7 +415,47 @@ export interface Shipment {
   delivered_to_name?: string
   is_export: boolean
   notes?: string
+  /** Push al TMS */
+  tms_sent_at?: string | null
+  tms_order_id?: string | null
+  tms_last_error?: string | null
   created_at: string
+}
+
+/** Orden canónica del TMS (vista previa del envío) */
+export interface TmsOrderPreview {
+  referencia_externa: string
+  numero?: string | null
+  cliente: { codigo: string; nombre: string; ruc?: string | null }
+  destino: {
+    nombre: string; direccion?: string | null; ciudad?: string | null
+    lat?: number | null; lon?: number | null
+    contacto_nombre?: string | null; contacto_telefono?: string | null
+    horario_desde?: string | null; horario_hasta?: string | null
+  }
+  peso_kg: number
+  volumen_m3?: number | null
+  bultos?: number | null
+  tipo_mercancia: string
+  prioridad: string
+  fecha_compromiso?: string | null
+  ventana_desde?: string | null
+  ventana_hasta?: string | null
+  lineas: { sku: string; descripcion?: string | null; cantidad: number }[]
+  faltantes: string[]
+  advertencias: string[]
+  estado_envio: string
+  enviado_tms?: string | null
+}
+
+export interface TmsSendResult {
+  shipment_id: string
+  numero?: string | null
+  resultado: 'creada' | 'ya_existia' | 'incompleta' | 'error'
+  tms_order_id?: string | null
+  faltantes?: string[]
+  advertencias?: string[]
+  error?: string
 }
 
 // ── Dashboard KPIs ─────────────────────────────────────

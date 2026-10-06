@@ -173,6 +173,23 @@ class SalesOrderRepository:
 
         return sos, total
 
+    async def get_customer(self, customer_id: UUID):
+        """Ficha del cliente (para completar los datos de entrega de la SO)."""
+        from app.models.master_data import Customer
+        result = await self.db.execute(
+            select(Customer).where(
+                and_(Customer.id == customer_id, Customer.tenant_id == self.tenant_id)
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def update_fields(self, so_id: UUID, data: dict) -> None:
+        await self.db.execute(
+            update(SalesOrder)
+            .where(and_(SalesOrder.id == so_id, SalesOrder.tenant_id == self.tenant_id))
+            .values(updated_at=datetime.now(timezone.utc), **data)
+        )
+
     async def update_status(self, so_id: UUID, status: SOStatus, **extra) -> None:
         now = datetime.now(timezone.utc)
         values = {"status": status, "updated_at": now, **extra}
@@ -578,6 +595,14 @@ class PackTaskRepository:
             )
         )
         return result.scalar_one_or_none()
+
+    async def list_by_so(self, so_id: UUID) -> List[PackTask]:
+        result = await self.db.execute(
+            select(PackTask).where(
+                and_(PackTask.so_id == so_id, PackTask.tenant_id == self.tenant_id)
+            )
+        )
+        return list(result.scalars().all())
 
     async def get_by_so(self, so_id: UUID) -> Optional[PackTask]:
         result = await self.db.execute(

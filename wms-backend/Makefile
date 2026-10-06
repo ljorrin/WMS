@@ -87,6 +87,9 @@ seed: ## 🌱 Cargar datos iniciales (tenant demo, superadmin, permisos)
 seed-demo: ## 🌱 Cargar datos de demostración completos
 	docker compose exec api python -m seeds.demo_data
 
+seed-tms: ## 🚚 Cargar 12 envíos pendientes listos para el TMS (contrato canónico)
+	docker compose exec api python -m seeds.tms_orders
+
 # ── Testing ───────────────────────────────────────────────────────────────────
 
 test: ## 🧪 Ejecutar tests

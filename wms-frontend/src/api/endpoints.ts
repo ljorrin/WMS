@@ -7,7 +7,7 @@ import type {
   InventoryLevel, StockSummary,
   InventoryAdjustment, PurchaseOrder, GoodsReceipt,
   PutawayTask, SalesOrder, PickingWave, PickingTask,
-  Shipment, InboundMetrics, OutboundMetrics, InventoryMetrics,
+  Shipment, TmsSendResult, TmsOrderPreview, InboundMetrics, OutboundMetrics, InventoryMetrics,
   Warehouse, MovementRow, BatchListResponse,
   QualityInspection, PackTask, ReturnOrder,
   ThroughputResponse, InboundThroughputPoint, OutboundThroughputPoint,
@@ -58,6 +58,12 @@ export const healthApi = {
 // ── INTEGRATIONS ──────────────────────────────────────
 export const integrationsApi = {
   getStatus: () => api.get<Record<string, { configured: boolean, missing: string[], extra?: any }>>('/integrations/status').then(r => r.data),
+  previewTms: (data: { shipment_ids?: string[]; all_pending?: boolean }) =>
+    api.post<{ items: TmsOrderPreview[]; total: number; incompletas: number; configured: boolean }>(
+      '/integrations/tms/preview', data).then(r => r.data),
+  sendToTms: (data: { shipment_ids?: string[]; all_pending?: boolean; force?: boolean }) =>
+    api.post<{ enviadas: number; con_error?: number; resultados: TmsSendResult[] }>('/integrations/tms/send', data)
+      .then(r => r.data),
 }
 
 // ── WAREHOUSES ────────────────────────────────────────

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from decimal import Decimal
+from enum import Enum
 from typing import List, Optional
 from uuid import UUID
 
@@ -29,6 +30,16 @@ from app.models.outbound import (
 # ══════════════════════════════════════════════════════════════════════════════
 # SALES ORDER
 # ══════════════════════════════════════════════════════════════════════════════
+
+class CargoType(str, Enum):
+    """Tipo de mercancía del contrato canónico del TMS (override manual en la SO)."""
+    CONSUMO_MASIVO = "consumo_masivo"
+    FARMACEUTICA = "farmaceutica"
+    REPUESTOS = "repuestos"
+    REFRIGERADA = "refrigerada"
+    PELIGROSA = "peligrosa"
+    FRAGIL = "fragil"
+
 
 class SalesOrderLineCreate(BaseModel):
     product_id: UUID
@@ -83,6 +94,17 @@ class SalesOrderCreate(BaseModel):
     ship_to_city: Optional[str] = Field(None, max_length=100)
     ship_to_country: Optional[str] = Field(None, max_length=2)
     ship_to_phone: Optional[str] = Field(None, max_length=30)
+    ship_to_province: Optional[str] = Field(None, max_length=100)
+    ship_to_contact_name: Optional[str] = Field(None, max_length=200)
+    ship_to_email: Optional[str] = Field(None, max_length=200)
+    ship_to_latitude: Optional[Decimal] = Field(None, ge=-90, le=90)
+    ship_to_longitude: Optional[Decimal] = Field(None, ge=-180, le=180)
+    ship_to_gln: Optional[str] = Field(None, max_length=13)
+    # Entrega (contrato canónico TMS)
+    delivery_window_start: Optional[datetime] = None
+    delivery_window_end: Optional[datetime] = None
+    service_time_min: Optional[int] = Field(None, ge=0, le=600)
+    cargo_type: Optional[CargoType] = None
     # Panamá
     is_export: bool = False
     ruc_cliente: Optional[str] = Field(None, max_length=20)
@@ -98,7 +120,20 @@ class SalesOrderUpdate(BaseModel):
     internal_notes: Optional[str] = None
     delivery_instructions: Optional[str] = None
     carrier_name: Optional[str] = Field(None, max_length=200)
+    ship_to_name: Optional[str] = Field(None, max_length=200)
     ship_to_address: Optional[str] = None
+    ship_to_city: Optional[str] = Field(None, max_length=100)
+    ship_to_province: Optional[str] = Field(None, max_length=100)
+    ship_to_phone: Optional[str] = Field(None, max_length=30)
+    ship_to_contact_name: Optional[str] = Field(None, max_length=200)
+    ship_to_email: Optional[str] = Field(None, max_length=200)
+    ship_to_latitude: Optional[Decimal] = Field(None, ge=-90, le=90)
+    ship_to_longitude: Optional[Decimal] = Field(None, ge=-180, le=180)
+    ship_to_gln: Optional[str] = Field(None, max_length=13)
+    delivery_window_start: Optional[datetime] = None
+    delivery_window_end: Optional[datetime] = None
+    service_time_min: Optional[int] = Field(None, ge=0, le=600)
+    cargo_type: Optional[CargoType] = None
 
 
 class SalesOrderResponse(BaseModel):
@@ -129,6 +164,17 @@ class SalesOrderResponse(BaseModel):
     ship_to_address: Optional[str]
     ship_to_city: Optional[str]
     ship_to_country: Optional[str]
+    ship_to_phone: Optional[str] = None
+    ship_to_province: Optional[str] = None
+    ship_to_contact_name: Optional[str] = None
+    ship_to_email: Optional[str] = None
+    ship_to_latitude: Optional[Decimal] = None
+    ship_to_longitude: Optional[Decimal] = None
+    ship_to_gln: Optional[str] = None
+    delivery_window_start: Optional[datetime] = None
+    delivery_window_end: Optional[datetime] = None
+    service_time_min: Optional[int] = None
+    cargo_type: Optional[str] = None
     carrier_type: ShippingCarrierType
     carrier_name: Optional[str]
     service_level: Optional[str]
@@ -355,6 +401,9 @@ class ShipmentResponse(BaseModel):
     is_export: bool
     delivered_to_name: Optional[str]
     erp_synced_at: Optional[datetime]
+    tms_sent_at: Optional[datetime] = None
+    tms_order_id: Optional[str] = None
+    tms_last_error: Optional[str] = None
     notes: Optional[str]
     so_number: Optional[str] = None
     customer_name: Optional[str] = None

@@ -13,7 +13,8 @@ export default defineConfig({
     port: 3000,
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        // Sobrescribible si el 8000 está ocupado: VITE_API_PROXY=http://localhost:8001 npm run dev
+        target: process.env.VITE_API_PROXY || 'http://localhost:8000',
         changeOrigin: true,
       },
     },

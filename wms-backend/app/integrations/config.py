@@ -11,6 +11,8 @@ Variables esperadas (configurar en despliegue):
   Transporte: CARRIER_BASE_URL, CARRIER_API_KEY, CARRIER_NAME
   ANA/SIGA:   SIGA_BASE_URL, SIGA_API_KEY, SIGA_ENVIRONMENT(sandbox|production)
   DGI:        DGI_BASE_URL, DGI_API_KEY, DGI_RUC_EMISOR, DGI_ENVIRONMENT
+  TMS:        TMS_BASE_URL (…/api/v1), TMS_API_KEY y TMS_CONNECTOR_ID (conector del TMS
+              que recibe el push; su API key es la «X-API-Key» del conector)
 """
 
 from __future__ import annotations
@@ -70,3 +72,8 @@ def dgi_config() -> EndpointConfig:
     return EndpointConfig("DGI", _env("DGI_BASE_URL"), _env("DGI_API_KEY"),
                           {"ruc_emisor": _env("DGI_RUC_EMISOR"),
                            "environment": _env("DGI_ENVIRONMENT") or "sandbox"})
+
+
+def tms_config() -> EndpointConfig:
+    return EndpointConfig("TMS", _env("TMS_BASE_URL"), _env("TMS_API_KEY"),
+                          {"connector_id": _env("TMS_CONNECTOR_ID")})

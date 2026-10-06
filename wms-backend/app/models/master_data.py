@@ -703,6 +703,21 @@ class Customer(WMSTenantBase):
     delivery_province: Mapped[Optional[str]] = mapped_column(String(100))
     delivery_country: Mapped[str] = mapped_column(String(2), default="PA")
     delivery_instructions: Mapped[Optional[str]] = mapped_column(Text)
+    delivery_latitude: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(10, 7), comment="Latitud WGS84 del punto de entrega principal (ruteo TMS)"
+    )
+    delivery_longitude: Mapped[Optional[Decimal]] = mapped_column(
+        Numeric(11, 7), comment="Longitud WGS84 del punto de entrega principal (ruteo TMS)"
+    )
+    receiving_hours_from: Mapped[Optional[str]] = mapped_column(
+        String(5), comment="Hora de apertura de recepción HH:MM"
+    )
+    receiving_hours_to: Mapped[Optional[str]] = mapped_column(
+        String(5), comment="Hora de cierre de recepción HH:MM"
+    )
+    service_time_min: Mapped[Optional[int]] = mapped_column(
+        Integer, comment="Minutos promedio de descarga en el cliente"
+    )
 
     # SLA
     sla_lead_time_hours: Mapped[Optional[int]] = mapped_column(

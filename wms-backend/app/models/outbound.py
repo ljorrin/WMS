@@ -168,6 +168,19 @@ class SalesOrder(WMSBase):
     ship_to_city    = Column(String(100))
     ship_to_country = Column(String(2))
     ship_to_phone   = Column(String(30))
+    ship_to_province = Column(String(100))
+    ship_to_contact_name = Column(String(200), comment="Persona que recibe en destino")
+    ship_to_email   = Column(String(200))
+    ship_to_latitude  = Column(Numeric(10, 7), comment="Latitud WGS84 del punto de entrega (ruteo TMS)")
+    ship_to_longitude = Column(Numeric(11, 7), comment="Longitud WGS84 del punto de entrega (ruteo TMS)")
+    ship_to_gln     = Column(String(13), comment="GLN GS1 del punto de entrega")
+
+    # Ventana y condiciones de entrega (contrato canónico TMS)
+    delivery_window_start = Column(DateTime(timezone=True), comment="Inicio de la ventana de entrega")
+    delivery_window_end   = Column(DateTime(timezone=True), comment="Fin de la ventana de entrega")
+    service_time_min = Column(Integer, comment="Minutos estimados de descarga en destino")
+    cargo_type      = Column(String(30), comment="Override del tipo de mercancía TMS (consumo_masivo, "
+                                                 "farmaceutica, repuestos, refrigerada, peligrosa, fragil)")
 
     # Transporte
     carrier_type    = Column(Enum(ShippingCarrierType), default=ShippingCarrierType.THIRD_PARTY)
@@ -423,6 +436,12 @@ class Shipment(WMSBase):
 
     # ERP sync
     erp_synced_at       = Column(DateTime(timezone=True))
+
+    # TMS (push del contrato canónico)
+    tms_sent_at         = Column(DateTime(timezone=True), comment="Cuándo se envió la orden al TMS")
+    tms_order_id        = Column(String(64), comment="ID de la orden de carga en el TMS")
+    tms_last_error      = Column(String(500), comment="Último error al enviar al TMS")
+
     notes               = Column(Text)
     created_by_id       = Column(PG_UUID(as_uuid=True), nullable=False)
 

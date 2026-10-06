@@ -100,6 +100,10 @@ services:
       - ENVIRONMENT=development
       - DEBUG=true
       - PYTHONPATH=/app
+      # Integración TMS (push «Enviar al TMS»)
+      - TMS_BASE_URL=${TMS_BASE_URL:-}
+      - TMS_API_KEY=${TMS_API_KEY:-}
+      - TMS_CONNECTOR_ID=${TMS_CONNECTOR_ID:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:

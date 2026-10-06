@@ -427,6 +427,17 @@ function SuppliersTab() {
 }
 
 // ─── Clientes ─────────────────────────────────────────────
+interface CustomerDelivery {
+  address: string; province: string; contactName: string; instructions: string
+  lat: string; lon: string; hoursFrom: string; hoursTo: string; serviceMin: string
+}
+const EMPTY_DELIVERY: CustomerDelivery = {
+  address: '', province: '', contactName: '', instructions: '',
+  lat: '', lon: '', hoursFrom: '', hoursTo: '', serviceMin: '',
+}
+// "lat, lon" pegado desde un mapa (p. ej. Google Maps)
+const LAT_LON_PAIR = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/
+
 function CustomersTab() {
   const qc = useQueryClient()
   const [page, setPage] = useState(1)
@@ -442,6 +453,8 @@ function CustomersTab() {
   const [deliveryCity, setDeliveryCity] = useState('')
   const [country, setCountry] = useState('PA')
   const [ruc, setRuc] = useState('')
+  const [delivery, setDelivery] = useState<CustomerDelivery>(EMPTY_DELIVERY)
+  const setDel = (patch: Partial<CustomerDelivery>) => setDelivery(d => ({ ...d, ...patch }))
 
   const { data, isLoading } = useQuery({
     queryKey: ['customers', page, search],
@@ -452,6 +465,7 @@ function CustomersTab() {
   const reset = () => {
     setCode(''); setCustomerName(''); setCustomerType('retail'); setContactEmail('')
     setContactPhone(''); setDeliveryCity(''); setCountry('PA'); setRuc('')
+    setDelivery(EMPTY_DELIVERY)
     setEditing(null)
   }
 
@@ -464,8 +478,25 @@ function CustomersTab() {
     setDeliveryCity(c.delivery_city ?? '')
     setCountry((c as any).delivery_country ?? 'PA')
     setRuc((c as any).ruc ?? '')
+    setDelivery({
+      address: c.delivery_address ?? '', province: c.delivery_province ?? '',
+      contactName: c.contact_name ?? '', instructions: c.delivery_instructions ?? '',
+      lat: c.delivery_latitude != null ? String(Number(c.delivery_latitude)) : '',
+      lon: c.delivery_longitude != null ? String(Number(c.delivery_longitude)) : '',
+      hoursFrom: c.receiving_hours_from ?? '', hoursTo: c.receiving_hours_to ?? '',
+      serviceMin: c.service_time_min != null ? String(c.service_time_min) : '',
+    })
     setOpen(true)
   }
+
+  const onLatChange = (v: string) => {
+    const m = v.match(LAT_LON_PAIR)
+    setDel(m ? { lat: m[1], lon: m[2] } : { lat: v })
+  }
+  const latNum = Number(delivery.lat), lonNum = Number(delivery.lon)
+  const geoInvalid = (delivery.lat !== '' || delivery.lon !== '') && (
+    delivery.lat === '' || delivery.lon === '' || !Number.isFinite(latNum) || !Number.isFinite(lonNum) ||
+    Math.abs(latNum) > 90 || Math.abs(lonNum) > 180)
 
   const saveMut = useMutation({
     mutationFn: () => {
@@ -476,6 +507,15 @@ function CustomersTab() {
         delivery_city: deliveryCity || undefined,
         delivery_country: country || undefined,
         ruc: ruc || undefined,
+        delivery_address: delivery.address || undefined,
+        delivery_province: delivery.province || undefined,
+        contact_name: delivery.contactName || undefined,
+        delivery_instructions: delivery.instructions || undefined,
+        delivery_latitude: delivery.lat !== '' ? latNum : undefined,
+        delivery_longitude: delivery.lon !== '' ? lonNum : undefined,
+        receiving_hours_from: delivery.hoursFrom || undefined,
+        receiving_hours_to: delivery.hoursTo || undefined,
+        service_time_min: delivery.serviceMin !== '' ? Number(delivery.serviceMin) : undefined,
       }
       return editing
         ? masterApi.updateCustomer(editing.id, payload)
@@ -489,7 +529,7 @@ function CustomersTab() {
     onError: () => toast.error('No se pudo guardar el cliente'),
   })
 
-  const canSave = code.trim().length > 0 && customerName.trim().length > 0
+  const canSave = code.trim().length > 0 && customerName.trim().length > 0 && !geoInvalid
 
   return (
     <div className="space-y-4">
@@ -524,6 +564,7 @@ function CustomersTab() {
               <Th>Tipo</Th>
               <Th>Contacto</Th>
               <Th>Ciudad</Th>
+              <Th>Georref.</Th>
               <Th>Estado</Th>
               <Th>Acciones</Th>
             </Tr>
@@ -531,12 +572,12 @@ function CustomersTab() {
           <Tbody>
             {isLoading ? (
               Array.from({ length: 5 }).map((_, i) => (
-                <Tr key={i}>{Array.from({ length: 7 }).map((_, j) => (
+                <Tr key={i}>{Array.from({ length: 8 }).map((_, j) => (
                   <Td key={j}><div className="h-4 bg-gray-100 rounded animate-pulse w-20" /></Td>
                 ))}</Tr>
               ))
             ) : !data?.items.length ? (
-              <EmptyRow cols={7} message="No hay clientes registrados" />
+              <EmptyRow cols={8} message="No hay clientes registrados" />
             ) : (
               data.items.map(c => (
                 <Tr key={c.id}>
@@ -545,6 +586,11 @@ function CustomersTab() {
                   <Td className="text-xs text-gray-500 capitalize">{c.customer_type}</Td>
                   <Td className="text-xs text-gray-500">{c.contact_email ?? '—'}</Td>
                   <Td className="text-xs text-gray-500">{c.delivery_city ?? '—'}</Td>
+                  <Td className="text-xs">
+                    {c.delivery_latitude != null && c.delivery_longitude != null
+                      ? <span className="text-green-700" title={`${Number(c.delivery_latitude)}, ${Number(c.delivery_longitude)}`}>✓ Sí</span>
+                      : <span className="text-amber-600" title="Sin coordenadas: el TMS tendrá que geocodificar la dirección">Falta</span>}
+                  </Td>
                   <Td><Badge status={c.is_active ? 'active' : 'inactive'} /></Td>
                   <Td>
                     <button onClick={() => openEdit(c)} title="Editar"
@@ -604,6 +650,48 @@ function CustomersTab() {
               placeholder="Ciudad principal de entrega" />
             <Input label="País" value={country} onChange={e => setCountry(e.target.value)}
               placeholder="PA, CO, US…" />
+          </div>
+
+          <div className="border-t border-gray-100 pt-3">
+            <p className="text-sm font-semibold text-gray-800">Punto de entrega (TMS)</p>
+            <p className="text-xs text-gray-500 mb-3">
+              Se copia a cada orden de venta del cliente y viaja al TMS para planificar las rutas.
+            </p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="sm:col-span-2">
+                  <Input label="Dirección de entrega" value={delivery.address}
+                    onChange={e => setDel({ address: e.target.value })} placeholder="Calle, edificio, local" />
+                </div>
+                <Input label="Provincia" value={delivery.province}
+                  onChange={e => setDel({ province: e.target.value })} placeholder="Panamá" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <Input label="Latitud" value={delivery.lat} onChange={e => onLatChange(e.target.value)}
+                  placeholder="9.0110 (o pega «lat, lon»)" />
+                <Input label="Longitud" value={delivery.lon} onChange={e => setDel({ lon: e.target.value })}
+                  placeholder="-79.4700"
+                  error={geoInvalid ? 'Coordenadas incompletas o fuera de rango' : undefined} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <div className="sm:col-span-2">
+                  <Input label="Persona que recibe" value={delivery.contactName}
+                    onChange={e => setDel({ contactName: e.target.value })} placeholder="Nombre del contacto" />
+                </div>
+                <Input label="Recibe desde" type="time" value={delivery.hoursFrom}
+                  onChange={e => setDel({ hoursFrom: e.target.value })} />
+                <Input label="Recibe hasta" type="time" value={delivery.hoursTo}
+                  onChange={e => setDel({ hoursTo: e.target.value })} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                <Input label="Descarga (min)" type="number" min="0" max="600" value={delivery.serviceMin}
+                  onChange={e => setDel({ serviceMin: e.target.value })} placeholder="20" />
+                <div className="sm:col-span-3">
+                  <Input label="Instrucciones de entrega" value={delivery.instructions}
+                    onChange={e => setDel({ instructions: e.target.value })} placeholder="Andén, acceso, requisitos" />
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </Modal>

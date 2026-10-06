@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Truck, PackageCheck, Ship, Plane } from 'lucide-react'
-import { outboundApi } from '@/api/endpoints'
+import { Plus, Truck, PackageCheck, Ship, Plane, Send, CheckCircle2, AlertTriangle } from 'lucide-react'
+import { outboundApi, integrationsApi } from '@/api/endpoints'
 import { ShipmentCreateModal } from './ShipmentCreateModal'
+import { TmsSendModal, type TmsSendTarget } from './TmsSendModal'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { Button } from '@/components/ui/Button'
@@ -49,6 +50,17 @@ export function ShipmentsPage() {
     }),
     placeholderData: prev => prev,
   })
+
+  // Integración TMS: el botón solo aparece si el backend tiene TMS_* configurado
+  const { data: integrations } = useQuery({
+    queryKey: ['integrations-status'],
+    queryFn: integrationsApi.getStatus,
+    staleTime: 5 * 60_000,
+  })
+  const tmsEnabled = !!integrations?.tms?.configured
+
+  // Envío al TMS: abre el modal de confirmación (vista previa → envío → resultado)
+  const [tmsTarget, setTmsTarget] = useState<TmsSendTarget | null>(null)
 
   const dispatchMut = useMutation({
     mutationFn: () => outboundApi.dispatchShipment(target!.id, {
@@ -109,6 +121,12 @@ export function ShipmentsPage() {
               <option key={s} value={s}>{s ? s.replace(/_/g, ' ') : 'Todos los estados'}</option>
             ))}
           </select>
+          {tmsEnabled && (
+            <Button size="sm" variant="secondary" onClick={() => setTmsTarget({ all: true })}
+              title="Envía al TMS todos los envíos pendientes que aún no se han enviado">
+              <Send className="h-4 w-4" /> Enviar pendientes al TMS
+            </Button>
+          )}
           <Button size="sm" onClick={() => setCreating(true)}>
             <Plus className="h-4 w-4" /> Nuevo Envío
           </Button>
@@ -127,6 +145,7 @@ export function ShipmentsPage() {
               <Th>Bultos</Th>
               <Th>Despacho</Th>
               <Th>Entrega</Th>
+              <Th>TMS</Th>
               <Th>Acciones</Th>
             </Tr>
           </Thead>
@@ -134,13 +153,13 @@ export function ShipmentsPage() {
             {isLoading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <Tr key={i}>
-                  {Array.from({ length: 8 }).map((_, j) => (
+                  {Array.from({ length: 10 }).map((_, j) => (
                     <Td key={j}><div className="h-4 bg-gray-100 rounded animate-pulse w-16" /></Td>
                   ))}
                 </Tr>
               ))
             ) : !data?.items.length ? (
-              <EmptyRow cols={8} message="No hay envíos registrados" />
+              <EmptyRow cols={10} message="No hay envíos registrados" />
             ) : (
               data.items.map(s => (
                 <Tr key={s.id}>
@@ -162,12 +181,35 @@ export function ShipmentsPage() {
                   <Td className="text-center">{s.total_boxes}</Td>
                   <Td className="text-xs text-gray-400">{fmt.datetime(s.actual_pickup)}</Td>
                   <Td className="text-xs text-gray-400">{fmt.datetime(s.actual_delivery)}</Td>
+                  <Td className="text-xs">
+                    {s.tms_sent_at ? (
+                      <span className="inline-flex items-center gap-1 text-green-700"
+                        title={`Enviado ${fmt.datetime(s.tms_sent_at)}${s.tms_order_id ? ` · Orden TMS ${s.tms_order_id}` : ''}`}>
+                        <CheckCircle2 className="h-3.5 w-3.5" /> En TMS
+                      </span>
+                    ) : s.tms_last_error ? (
+                      <span className="inline-flex items-center gap-1 text-red-600" title={s.tms_last_error}>
+                        <AlertTriangle className="h-3.5 w-3.5" /> Error
+                      </span>
+                    ) : <span className="text-gray-300">—</span>}
+                  </Td>
                   <Td>
                     <div className="flex gap-1">
-                      {(s.status === 'pending' || s.status === 'ready') && (
-                        <Button size="sm" variant="secondary" onClick={() => openDispatch(s)}>
+                      {s.status === 'pending' && tmsEnabled && !s.tms_sent_at && (
+                        <Button size="sm"
+                          onClick={() => setTmsTarget({ ids: [s.id] })}
+                          title="Enviar la orden al TMS para que planifique y despache la ruta">
+                          <Send className="h-4 w-4" /> TMS
+                        </Button>
+                      )}
+                      {(s.status === 'pending' || s.status === 'ready') && !s.tms_sent_at && (
+                        <Button size="sm" variant="secondary" onClick={() => openDispatch(s)}
+                          title="Despacho manual, sin TMS">
                           Despachar
                         </Button>
+                      )}
+                      {(s.status === 'pending' || s.status === 'ready') && s.tms_sent_at && (
+                        <span className="text-xs text-gray-500 self-center">Lo despacha el TMS</span>
                       )}
                       {s.status === 'in_transit' && (
                         <Button size="sm" variant="secondary" onClick={() => openDeliver(s)}>
@@ -185,6 +227,8 @@ export function ShipmentsPage() {
       </Card>
 
       <ShipmentCreateModal open={creating} onClose={() => setCreating(false)} />
+
+      <TmsSendModal target={tmsTarget} onClose={() => setTmsTarget(null)} />
 
       {/* Despacho */}
       <Modal
