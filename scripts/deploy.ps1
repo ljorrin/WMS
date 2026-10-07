@@ -1,4 +1,4 @@
-<#
+﻿<#
   WMS Panamá — Actualización en producción (código + migraciones) en un solo comando.
   Uso (PowerShell):
       .\scripts\deploy.ps1                 # rama main
@@ -11,7 +11,9 @@ param(
   [string]$Rama = "main",
   [switch]$SinBackup
 )
-$ErrorActionPreference = "Stop"
+# "Continue": git y docker escriben progreso en stderr y con "Stop" PowerShell 5.1 lo trata como error.
+# Los fallos reales se detectan con $LASTEXITCODE.
+$ErrorActionPreference = "Continue"
 $raiz = Split-Path $PSScriptRoot -Parent
 Set-Location $raiz
 $dc = @("compose", "--env-file", "wms-backend\.env.prod", "-f", "docker-compose.prod.yml")
@@ -26,9 +28,14 @@ function Ejecutar([string[]]$argumentos) {
 if (-not (Test-Path "wms-backend\.env.prod")) { throw "Falta wms-backend\.env.prod" }
 
 # 1. Backup de la BD
-if (-not $SinBackup) {
+$pgActivo = (& docker @($dc + @("ps", "--status", "running", "--services"))) -contains "postgres"
+if ($SinBackup) { }
+elseif (-not $pgActivo) {
+  Write-Host "`nAviso: postgres no está corriendo (¿primer despliegue?). Se omite el backup." -ForegroundColor Yellow
+}
+else {
   Paso "Backup de la base de datos"
-  New-Item -ItemType Directory -Force "backups" | Out-Null
+  New-Item -ItemType Directory -Force "backups" -ErrorAction Stop | Out-Null
   $archivo = "backups\wms_predeploy_$(Get-Date -Format 'yyyyMMdd_HHmmss').dump"
   Ejecutar ($dc + @("exec", "-T", "postgres", "sh", "-c", 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/deploy.dump'))
   Ejecutar ($dc + @("cp", "postgres:/tmp/deploy.dump", $archivo))
@@ -37,9 +44,11 @@ if (-not $SinBackup) {
 
 # 2. Código nuevo
 Paso "Actualizando código ($Rama)"
-git fetch origin
-git checkout $Rama
-git pull --ff-only origin $Rama
+git fetch origin 2>&1 | Write-Host
+if ($LASTEXITCODE -ne 0) { throw "git fetch falló" }
+git checkout $Rama 2>&1 | Write-Host
+if ($LASTEXITCODE -ne 0) { throw "git checkout $Rama falló" }
+git pull --ff-only origin $Rama 2>&1 | Write-Host
 if ($LASTEXITCODE -ne 0) { throw "git pull falló (¿cambios locales en el servidor?)" }
 
 # 3. Frontend (dist/ no está en git: se compila aquí con Node en contenedor)
@@ -65,7 +74,7 @@ Ejecutar ($dc + @("restart", "nginx"))
 Paso "Esperando a que el API esté sano"
 $ok = $false
 for ($i = 0; $i -lt 30; $i++) {
-  try { Invoke-WebRequest "http://127.0.0.1:8080/api/v1/health/live" -UseBasicParsing -TimeoutSec 5 | Out-Null; $ok = $true; break }
+  try { Invoke-WebRequest "http://127.0.0.1:8080/api/v1/health/live" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop | Out-Null; $ok = $true; break }
   catch { Start-Sleep 5 }
 }
 & docker @($dc + @("ps"))
